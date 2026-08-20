@@ -1,0 +1,191 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Visual thesis: a phosphor-radar instrument panel -- void-black backdrop,
+  a single hot amber "signal" accent (the color of an old radar/sonar CRT
+  reading a contact off the dark), oversized tabular-mono numerals as the
+  loudest voice on the page, and hairline targeting-reticle brackets on the
+  panels that matter. The full green->red stoplight scale is reserved
+  ENTIRELY for real data (quality categories, opportunity scores) so color
+  always means something -- amber is the one color that means "the UI",
+  never a data value.
+
+  Interaction thesis: fast and dry (150-200ms), no bounce/spring/elastic,
+  ever. Hover = a hairline brighten plus reticle corner-brackets snapping
+  in, never scale or shadow-lift. The ambient scanline sweep is the only
+  continuous motion in the whole app -- everything else is discrete.
+*/
+@layer base {
+  :root {
+    --ink: 220 26% 6%;
+    --panel: 218 24% 10%;
+    --panel-raised: 217 22% 13%;
+    --line: 217 19% 20%;
+    --fog: 215 16% 57%;
+    --paper: 210 20% 92%;
+    --signal: 42 100% 50%;
+
+    /* Back-compat aliases used by a handful of components/pages. */
+    --background: var(--ink);
+    --foreground: var(--paper);
+    --card: var(--panel);
+    --muted: 217 19% 27%;
+    --muted-foreground: var(--fog);
+    --border: var(--line);
+    --primary: var(--signal);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    position: relative;
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    /* A faint fixed instrument-panel grid -- the app's whole job is
+       reading a signal off a grid of data, so the backdrop says that
+       before a single number renders. */
+    background-image: radial-gradient(circle at 1px 1px, hsl(var(--line) / 0.5) 1px, transparent 0);
+    background-size: 32px 32px;
+    background-attachment: fixed;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      hsl(var(--signal) / 0.05) 45%,
+      hsl(var(--signal) / 0.09) 50%,
+      hsl(var(--signal) / 0.05) 55%,
+      transparent 100%
+    );
+    background-size: 100% 260%;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    body::before {
+      animation: scan-sweep 10s ease-in-out infinite;
+    }
+  }
+  @keyframes scan-sweep {
+    0% {
+      background-position: 0 -80%;
+    }
+    50% {
+      background-position: 0 80%;
+    }
+    100% {
+      background-position: 0 -80%;
+    }
+  }
+  /* A whisper of film grain over everything -- static, not animated (the
+     scanline is the only motion this app has). Cheap SVG feTurbulence data
+     URI, no image asset. */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+  ::selection {
+    background: hsl(var(--signal) / 0.25);
+  }
+}
+
+/* Leaflet ships light-UI chrome by default; re-skin the controls to match
+   the instrument-panel theme rather than leaving a jarring white rectangle
+   in an otherwise dark app. The tile imagery itself stays as-is -- OSM's
+   standard tiles, not something we control. */
+.leaflet-bar,
+.leaflet-bar a,
+.leaflet-control-attribution {
+  background: hsl(var(--panel)) !important;
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--paper)) !important;
+}
+.leaflet-bar a:hover {
+  background: hsl(var(--panel-raised)) !important;
+}
+.leaflet-control-attribution a {
+  color: hsl(var(--signal)) !important;
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-mono), ui-monospace, monospace;
+  }
+
+  /* Targeting-reticle corner marks -- the signature motif for the one or
+     two moments per page that represent "the app is actively scanning
+     something" (the map's radius picker, a primary panel in focus). */
+  .bracket-frame {
+    position: relative;
+  }
+  .bracket-frame::before,
+  .bracket-frame::after {
+    content: "";
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid hsl(var(--signal) / 0.7);
+    pointer-events: none;
+  }
+  .bracket-frame::before {
+    top: -1px;
+    left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+  .bracket-frame::after {
+    bottom: -1px;
+    right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+
+  /* Same reticle marks, but hidden until hover/focus -- the interaction
+     thesis's signature hover: brackets snap in, nothing scales or lifts. */
+  .bracket-hover {
+    position: relative;
+  }
+  .bracket-hover::before,
+  .bracket-hover::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid hsl(var(--signal) / 0.9);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+  }
+  .bracket-hover::before {
+    top: -1px;
+    left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+  .bracket-hover::after {
+    bottom: -1px;
+    right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+  .bracket-hover:hover::before,
+  .bracket-hover:hover::after,
+  .bracket-hover:focus-within::before,
+  .bracket-hover:focus-within::after {
+    opacity: 1;
+  }
+}

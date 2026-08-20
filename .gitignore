@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# Env
+.env
+.env.local
+*.env
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Screenshots / generated artifacts
+backend/data/screenshots/
+*.png
+!frontend/public/**/*.png
+
+# Alembic sqlite test db
+*.db
+*.sqlite3
+
+# Dev server process tracking + logs (scripts/dev.ps1 / dev-stop.ps1)
+.dev-pids.json
+.devlogs/
+.playwright-mcp

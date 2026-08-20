@@ -1,0 +1,68 @@
+import enum
+
+
+class WebsiteStatus(str, enum.Enum):
+    EXISTS = "exists"
+    NOT_FOUND = "not_found"
+    UNREACHABLE = "unreachable"
+
+
+class QualityCategory(str, enum.Enum):
+    EXCELLENT = "EXCELLENT"
+    GOOD = "GOOD"
+    AVERAGE = "AVERAGE"
+    WEAK = "WEAK"
+    POOR = "POOR"
+    CRITICAL = "CRITICAL"
+
+
+class OpportunityType(str, enum.Enum):
+    NO_WEBSITE = "NO_WEBSITE"
+    WEBSITE_REDESIGN = "WEBSITE_REDESIGN"
+    MOBILE_IMPROVEMENT = "MOBILE_IMPROVEMENT"
+    CONVERSION_IMPROVEMENT = "CONVERSION_IMPROVEMENT"
+    LEAD_CAPTURE = "LEAD_CAPTURE"
+    AI_CHATBOT = "AI_CHATBOT"
+    FAQ_AUTOMATION = "FAQ_AUTOMATION"
+    BOOKING_AUTOMATION = "BOOKING_AUTOMATION"
+    CUSTOMER_SUPPORT_AUTOMATION = "CUSTOMER_SUPPORT_AUTOMATION"
+    ANALYTICS = "ANALYTICS"
+    FULL_DIGITAL_UPGRADE = "FULL_DIGITAL_UPGRADE"
+    CUSTOM_AI_AUTOMATION = "CUSTOM_AI_AUTOMATION"
+
+
+class PackageType(str, enum.Enum):
+    STANDARD = "STANDARD"
+    FULL = "FULL"
+    CUSTOM = "CUSTOM"
+
+
+class OutreachAngle(str, enum.Enum):
+    NEW_WEBSITE = "NEW_WEBSITE"
+    WEBSITE_REDESIGN = "WEBSITE_REDESIGN"
+    MOBILE_IMPROVEMENT = "MOBILE_IMPROVEMENT"
+    AI_CHATBOT = "AI_CHATBOT"
+    BOOKING = "BOOKING"
+    LEAD_CAPTURE = "LEAD_CAPTURE"
+    FULL_DIGITAL_UPGRADE = "FULL_DIGITAL_UPGRADE"
+
+
+class LeadStatus(str, enum.Enum):
+    NEW = "NEW"
+    AUDITED = "AUDITED"
+    QUALIFIED = "QUALIFIED"
+    CONTACTED = "CONTACTED"
+    FOLLOW_UP = "FOLLOW_UP"
+    REPLIED = "REPLIED"
+    DEMO_SENT = "DEMO_SENT"
+    CALL_BOOKED = "CALL_BOOKED"
+    PROPOSAL = "PROPOSAL"
+    WON = "WON"
+    LOST = "LOST"
+    NOT_INTERESTED = "NOT_INTERESTED"
+
+
+class BusinessSource(str, enum.Enum):
+    OPENSTREETMAP = "openstreetmap"
+    CSV = "csv"
+    MANUAL = "manual"
