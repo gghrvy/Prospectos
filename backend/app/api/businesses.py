@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -36,6 +37,8 @@ from app.services.discovery.geoapify import GEOAPIFY_KNOWN_CATEGORIES
 from app.services.discovery.openstreetmap import KNOWN_CATEGORIES
 from app.services.contracts import render_nda, render_service_agreement, render_welcome_packet
 from app.services.outreach.generator import generate_outreach_draft
+from app.services.visual_brief import generate_visual_brief
+from app.services import demo_data
 
 router = APIRouter(prefix="/api/businesses", tags=["businesses"])
 
@@ -59,6 +62,11 @@ def list_businesses(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
+    if get_settings().is_demo_mode:
+        return demo_data.list_businesses(
+            search=search, city=city, category=category, website_status=website_status,
+            sort_by=sort_by, sort_dir=sort_dir, limit=limit, offset=offset,
+        )
     if sort_by not in _SORTABLE_FIELDS:
         raise HTTPException(400, f"sort_by must be one of {sorted(_SORTABLE_FIELDS)}")
 
@@ -159,7 +167,7 @@ async def import_businesses_csv(file: UploadFile = File(...), db: Session = Depe
 
     created: list[Business] = []
     for candidate in unique:
-        business = Business(**candidate.model_dump())
+        business = Business(**candidate.model_dump(exclude={"prospect_fit_score", "prospect_fit_reason"}))
         db.add(business)
         created.append(business)
     db.commit()
@@ -269,7 +277,7 @@ def _resolve_sender_snapshot(db: Session, sender_id: str | None) -> dict:
 def _persist_candidates(db: Session, candidates: list) -> list[BusinessRead]:
     created: list[Business] = []
     for candidate in candidates:
-        business = Business(**candidate.model_dump())
+        business = Business(**candidate.model_dump(exclude={"prospect_fit_score", "prospect_fit_reason"}))
         db.add(business)
         created.append(business)
     db.commit()
@@ -291,6 +299,11 @@ def save_businesses(payload: SaveBusinessesRequest, db: Session = Depends(get_db
 
 @router.get("/{business_id}", response_model=BusinessDetail)
 def get_business(business_id: str, db: Session = Depends(get_db)):
+    if get_settings().is_demo_mode:
+        detail = demo_data.business_detail(business_id)
+        if not detail:
+            raise HTTPException(404, "Demo prospect not found")
+        return detail
     business = db.get(Business, business_id)
     if not business:
         raise HTTPException(404, "Business not found")
@@ -354,12 +367,32 @@ def run_business_audit(business_id: str, db: Session = Depends(get_db)):
     and inserts a new WebsiteAudit row — audits are never overwritten, so
     both developers can see the full history via the shared DB (spec
     section 36)."""
+    if get_settings().is_demo_mode:
+        audit = demo_data.audit_for(business_id)
+        if not audit:
+            raise HTTPException(404, "Demo prospect not found")
+        return audit
+
     business = db.get(Business, business_id)
     if not business:
         raise HTTPException(404, "Business not found")
 
     audit_data = run_audit(business)
     audit = WebsiteAudit(business_id=business_id, **audit_data)
+    # SQLite can collapse two rapid inserts to the same effective timestamp,
+    # while every audit list uses created_at to determine "latest". Keep that
+    # ordering strictly monotonic so a re-audit is always the newest result.
+    previous_created_at = db.scalar(
+        select(WebsiteAudit.created_at)
+        .where(WebsiteAudit.business_id == business_id)
+        .order_by(WebsiteAudit.created_at.desc())
+        .limit(1)
+    )
+    if previous_created_at:
+        if previous_created_at.tzinfo is None:
+            previous_created_at = previous_created_at.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        audit.created_at = max(now, previous_created_at + timedelta(microseconds=1))
     db.add(audit)
 
     business.website_status = (
@@ -398,32 +431,56 @@ def generate_business_outreach(business_id: str, payload: OutreachGenerateReques
     opportunity_reasons = (latest_audit.opportunity_reasons if latest_audit else None) or [
         "Website not found from available sources."
     ]
+    assessments = latest_audit.opportunity_assessments if latest_audit else None
+    # Structured PRIMARY assessments were added after the first audits had
+    # already been stored. Those older audits still contain scored,
+    # customer-facing opportunity types and reasons, which the generator can
+    # safely map to an angle. Do not make a prospect impossible to contact
+    # merely because that newer optional field is absent.
 
     sender_snapshot = _resolve_sender_snapshot(db, payload.sender_id)
 
-    draft = generate_outreach_draft(
-        business_name=business.name,
-        category=business.category,
-        opportunity_types=opportunity_types,
-        opportunity_reasons=opportunity_reasons,
-        angle=payload.angle,
-        sender={
-            "name": sender_snapshot.get("sender_name"),
-            "title": sender_snapshot.get("sender_title"),
-            "email": sender_snapshot.get("sender_email"),
-            "phone": sender_snapshot.get("sender_phone"),
-            "portfolio_url": sender_snapshot.get("sender_portfolio_url"),
-        }
-        if sender_snapshot
-        else None,
-        social_proof={"rating": business.rating, "review_count": business.review_count},
-    )
+    try:
+        draft = generate_outreach_draft(
+            business_name=business.name,
+            category=business.category,
+            opportunity_types=opportunity_types,
+            opportunity_reasons=opportunity_reasons,
+            angle=payload.angle,
+            sender={
+                "name": sender_snapshot.get("sender_name"),
+                "title": sender_snapshot.get("sender_title"),
+                "email": sender_snapshot.get("sender_email"),
+                "phone": sender_snapshot.get("sender_phone"),
+                "portfolio_url": sender_snapshot.get("sender_portfolio_url"),
+            }
+            if sender_snapshot
+            else None,
+            social_proof={"rating": business.rating, "review_count": business.review_count},
+            opportunity_assessments=assessments,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
     outreach = Outreach(business_id=business_id, **draft, **sender_snapshot)
     db.add(outreach)
     db.commit()
     db.refresh(outreach)
     return outreach
+
+
+@router.post("/{business_id}/visual-brief")
+def generate_business_visual_brief(business_id: str, db: Session = Depends(get_db)):
+    business = db.get(Business, business_id)
+    if not business:
+        raise HTTPException(404, "Business not found")
+    audit = db.scalars(select(WebsiteAudit).where(WebsiteAudit.business_id == business_id).order_by(WebsiteAudit.created_at.desc()).limit(1)).first()
+    if not audit:
+        raise HTTPException(422, "Run an audit before generating a visual brief.")
+    try:
+        return {"content": generate_visual_brief(business, audit)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 _CONTRACT_RENDERERS = {

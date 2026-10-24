@@ -49,6 +49,8 @@ class WebsiteAuditRead(BaseModel):
     opportunity_types: list[str] | None = None
     audit_summary: str | None = None
     opportunity_reasons: list[str] | None = None
+    opportunity_assessments: list[dict] | None = None
+    website_context: dict | None = None
 
     screenshot_desktop_path: str | None = None
     screenshot_mobile_path: str | None = None

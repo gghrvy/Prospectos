@@ -1,6 +1,7 @@
 from app.services.crawler.fetcher import FetchedPage
 
 DEFAULT_TIMEOUT_MS = 15000
+POST_LOAD_SETTLE_MS = 1500
 USER_AGENT = "ProspectOSBot/0.1 (+internal audit tool; conservative crawl, respects robots.txt)"
 
 
@@ -26,6 +27,11 @@ class PlaywrightFetcher:
         page = self._context.new_page()
         try:
             response = page.goto(url, timeout=self._timeout_ms, wait_until="domcontentloaded")
+            # Many contact/chat widgets are injected shortly after the base
+            # document is ready. Wait briefly for that client-side UI before
+            # saving the DOM, without relying on networkidle (chat widgets
+            # often keep long-running network connections open forever).
+            page.wait_for_timeout(POST_LOAD_SETTLE_MS)
             html = page.content()
             status = response.status if response else None
             return FetchedPage(url=url, final_url=page.url, status_code=status, html=html)

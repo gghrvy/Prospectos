@@ -37,7 +37,7 @@ export default function RootLayout({
     <html lang="en" className={`dark ${plexSans.variable} ${plexMono.variable}`}>
       <body>
         <Nav />
-        <div className="mx-auto max-w-7xl px-6 py-8">{children}</div>
+        <main className="mx-auto max-w-7xl px-5 py-7 sm:px-6 sm:py-8">{children}</main>
       </body>
     </html>
   );

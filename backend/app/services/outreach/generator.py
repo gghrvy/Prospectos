@@ -1,3 +1,5 @@
+import re
+
 from app.services.ai.base import AIProvider
 from app.services.ai.ollama_provider import OllamaProvider
 from app.services.ai.template_provider import TemplateProvider
@@ -12,8 +14,47 @@ _OPPORTUNITY_TO_ANGLE: dict[str, str] = {
     "AI_CHATBOT": "AI_CHATBOT",
     "BOOKING_AUTOMATION": "BOOKING",
     "LEAD_CAPTURE": "LEAD_CAPTURE",
+    "CONVERSION_IMPROVEMENT": "CONVERSION_IMPROVEMENT",
+    "FAQ_AUTOMATION": "FAQ_AUTOMATION",
+    "CUSTOMER_SUPPORT_AUTOMATION": "CUSTOMER_SUPPORT_AUTOMATION",
+    "ANALYTICS": "ANALYTICS",
+    "CUSTOM_AI_AUTOMATION": "CUSTOM_AI_AUTOMATION",
     "FULL_DIGITAL_UPGRADE": "FULL_DIGITAL_UPGRADE",
 }
+
+_BANNED_OUTREACH_LANGUAGE = re.compile(
+    r"\b(?:was detected|was not detected|crawled(?: pages)?|our audit|website score|scanner found|"
+    r"crawler found|opportunity score|technical analysis|confidence score|\bDOM\b)\b", re.IGNORECASE
+)
+
+
+def has_internal_audit_language(text: str) -> bool:
+    return bool(_BANNED_OUTREACH_LANGUAGE.search(text))
+
+
+def needs_editorial_rewrite(text: str) -> bool:
+    if has_internal_audit_language(text):
+        return True
+    sentences = [set(re.findall(r"[a-z]{4,}", sentence.lower())) for sentence in re.split(r"[.!?]+", text)]
+    sentences = [words for words in sentences if words]
+    for index, words in enumerate(sentences[:-1]):
+        following = sentences[index + 1]
+        if len(words) >= 4 and len(following) >= 4 and len(words & following) / min(len(words), len(following)) >= 0.7:
+            return True
+    return False
+
+
+def customer_facing_observation(assessment: dict | None) -> str | None:
+    """The sole bridge from internal opportunity data to email language.
+    Future opportunity types work as long as they provide an interpretation
+    or customer-facing observation; raw evidence is intentionally never a
+    fallback for an email."""
+    if not assessment:
+        return None
+    observation = assessment.get("outreach_observation") or assessment.get("business_interpretation")
+    if not observation or has_internal_audit_language(observation):
+        return None
+    return observation.strip()
 
 
 def pick_angle(opportunity_types: list[str]) -> str:
@@ -21,6 +62,15 @@ def pick_angle(opportunity_types: list[str]) -> str:
         if opportunity_type in _OPPORTUNITY_TO_ANGLE:
             return _OPPORTUNITY_TO_ANGLE[opportunity_type]
     return "FULL_DIGITAL_UPGRADE"
+
+
+def pick_primary_angle(opportunity_assessments: list[dict] | None) -> str | None:
+    """Auto-pick only a credible primary recommendation, never the first
+    broadly detected missing feature."""
+    for item in opportunity_assessments or []:
+        if item.get("classification") == "PRIMARY":
+            return _OPPORTUNITY_TO_ANGLE.get(item.get("opportunity_type", ""), item.get("opportunity_type"))
+    return None
 
 
 def _reorder_reasons_for_angle(
@@ -61,7 +111,8 @@ def _build_signature(sender: dict | None) -> str:
 
     lines = ["Best,", sender["name"]]
     if sender.get("title"):
-        lines.append(sender["title"])
+        title = sender["title"]
+        lines.append(title if title.isupper() else title.title())
     # Prefer a portfolio link (stronger credibility signal) over a bare
     # email in the signature; email is still usable via reply-to either way.
     contact = sender.get("portfolio_url") or sender.get("email")
@@ -82,6 +133,7 @@ def generate_outreach_draft(
     generated_by: str | None = None,
     sender: dict | None = None,
     social_proof: dict | None = None,
+    opportunity_assessments: list[dict] | None = None,
 ) -> dict:
     """Builds one outreach draft. Always creates fresh output — callers
     persist this as a new Outreach row rather than overwriting a previous
@@ -97,7 +149,12 @@ def generate_outreach_draft(
     provider optionally cite the business's own real rating as a liking
     cue -- never fabricated, and silently skipped when absent or thin."""
 
-    resolved_angle = angle or pick_angle(opportunity_types)
+    primary = next((item for item in (opportunity_assessments or []) if item.get("classification") == "PRIMARY"), None)
+    resolved_angle = angle or pick_primary_angle(opportunity_assessments) or pick_angle(opportunity_types)
+    selected_assessment = primary if not angle else next(
+        (item for item in (opportunity_assessments or []) if _OPPORTUNITY_TO_ANGLE.get(item.get("opportunity_type", "")) == resolved_angle),
+        None,
+    )
 
     if provider is None:
         from app.database.config import get_settings
@@ -106,9 +163,23 @@ def generate_outreach_draft(
         provider, generated_by = get_ai_provider(settings.ollama_base_url, settings.ollama_model)
 
     ordered_reasons = _reorder_reasons_for_angle(resolved_angle, opportunity_types, opportunity_reasons)
+    observation = customer_facing_observation(selected_assessment)
+    if selected_assessment and observation:
+        possible_impact = selected_assessment.get("possible_impact") or selected_assessment.get("business_interpretation")
+        if not possible_impact or has_internal_audit_language(possible_impact):
+            raise ValueError("This opportunity has no safe, evidence-based business interpretation.")
+        ordered_reasons = [observation, possible_impact]
+    elif has_internal_audit_language(" ".join(ordered_reasons)):
+        raise ValueError("This opportunity has no safe customer-facing observation. Re-audit or select a different angle.")
     subject, body = provider.generate_outreach(
         business_name, category, resolved_angle, ordered_reasons, sender=sender, social_proof=social_proof
     )
+    # An LLM must never be allowed to leak internal audit terminology. The
+    # deterministic provider receives only the customer-facing translation.
+    if needs_editorial_rewrite(f"{subject}\n{body}"):
+        subject, body = TemplateProvider().generate_outreach(
+            business_name, category, resolved_angle, ordered_reasons, sender=sender, social_proof=social_proof
+        )
     full_body = f"{body.rstrip()}\n\n{_build_signature(sender)}"
 
     return {

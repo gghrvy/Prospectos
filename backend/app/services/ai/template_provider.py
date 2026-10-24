@@ -6,9 +6,14 @@ _ANGLE_LABELS: dict[str, str] = {
     "NEW_WEBSITE": "a first website",
     "WEBSITE_REDESIGN": "a website refresh",
     "MOBILE_IMPROVEMENT": "a mobile-friendly upgrade",
-    "AI_CHATBOT": "an AI chat assistant for after-hours questions",
-    "BOOKING": "online booking",
-    "LEAD_CAPTURE": "a simple way to capture leads",
+    "AI_CHATBOT": "a small on-site assistant for common questions",
+    "BOOKING": "a simple way to request an appointment",
+    "LEAD_CAPTURE": "a short enquiry form",
+    "CONVERSION_IMPROVEMENT": "a clearer next step for interested visitors",
+    "FAQ_AUTOMATION": "a simple place for common questions and answers",
+    "CUSTOMER_SUPPORT_AUTOMATION": "a simple on-site support option",
+    "ANALYTICS": "a clearer way to review key website actions",
+    "CUSTOM_AI_AUTOMATION": "a focused automation improvement",
     "FULL_DIGITAL_UPGRADE": "a full digital upgrade",
 }
 
@@ -123,6 +128,34 @@ def _humanize_observation(raw: str | None) -> str:
 _MIN_RATING = 4.0
 _MIN_REVIEW_COUNT = 3
 
+_OPENINGS = (
+    "I took a quick look at {business}'s website and noticed {observation}.",
+    "I came across {business}'s site and noticed {observation}.",
+    "One thing that stood out when I looked at {business}'s site was that {observation}.",
+)
+_SUBJECTS = (
+    "Quick idea for {business}",
+    "Something I noticed on {business}'s site",
+    "Small idea for {business}'s website",
+)
+_CTAS = (
+    "Would you like me to put together a quick mockup and send it over?",
+    "Want me to send over a quick visual of what I mean?",
+    "If you'd like, I can put together a quick concept and send it over.",
+)
+_SALESY_LANGUAGE = re.compile(r"\b(?:boost your revenue|skyrocket|transform your business|maximize engagement|unlock growth|game-changing|revolutionary|cutting-edge|take your business to the next level|losing customers|missing out on revenue)\b", re.I)
+
+
+def _variant_index(business_name: str, angle: str, count: int) -> int:
+    return sum(ord(char) for char in f"{business_name}|{angle}") % count
+
+
+def _polish_observation(observation: str) -> str:
+    result = observation.strip().rstrip(".")
+    result = re.sub(r"^visitors can browse information about ", "visitors can find things like your ", result, flags=re.I)
+    result = re.sub(r"^there is not ", "there isn't ", result, flags=re.I)
+    return result.replace(" directly on the site", " directly through the site")
+
 
 def _build_social_proof_line(social_proof: dict | None) -> str:
     if not social_proof:
@@ -173,6 +206,21 @@ class TemplateProvider(AIProvider):
         sender: dict | None = None,
         social_proof: dict | None = None,
     ) -> tuple[str, str]:
+        angle_label = _ANGLE_LABELS.get(angle, "a focused improvement")
+        observation = _polish_observation(_humanize_observation(observations[0] if observations else None))
+        variant = _variant_index(business_name, angle, len(_OPENINGS))
+        subject = _SUBJECTS[variant].format(business=business_name)
+        opening = _OPENINGS[variant].format(business=business_name, observation=observation)
+        ideas = (
+            f"I had an idea for {angle_label} that could fit naturally into the current site.",
+            f"I had an idea for {angle_label} without changing the existing design.",
+            f"There may be a straightforward way to add {angle_label} while keeping the current site familiar.",
+        )
+        body = "Hi there,\n\n" + opening + "\n\n" + ideas[variant] + "\n\n" + _CTAS[variant]
+        if _SALESY_LANGUAGE.search(f"{subject}\n{body}"):
+            raise ValueError("Salesy language failed the editorial quality check.")
+        return subject, body
+
         angle_label = _ANGLE_LABELS.get(angle, "a few improvements")
         observation = _humanize_observation(observations[0] if observations else None)
         consequence = _ANGLE_CONSEQUENCES.get(
@@ -180,17 +228,21 @@ class TemplateProvider(AIProvider):
         )
         # Aside-clause construction avoids the plural/singular mismatch of
         # "businesses as a hospital" while still naming the category.
-        category_aside = f" — as a {category.lower()} —" if category else ""
         proof_line = _build_social_proof_line(social_proof)
 
-        subject = f"Something I noticed on {business_name}'s site"
+        subject = f"Quick idea for {business_name}"
         body = (
             "Hi there,\n\n"
             f"I took a quick look at {business_name}'s site and noticed {observation}.\n\n"
-            f"{consequence}\n\n"
+            f"{observations[1] if len(observations) > 1 else consequence}\n\n"
             f"{proof_line}"
-            f"I help local businesses like yours{category_aside} fix exactly that, usually with {angle_label}.\n\n"
+            f"I had a simple idea for how {angle_label} could fit into the existing site.\n\n"
             "Want me to put together a quick mockup of what it could look like? No cost, no obligation — "
             "just reply and I'll send it over."
         )
-        return subject, body
+        body = re.sub(
+            r"Want me to put together.*?send it over\.",
+            "Would you like me to put together a quick mockup and send it over?",
+            body,
+        )
+        return subject, body.replace("—", " ").replace("â€”", " ")

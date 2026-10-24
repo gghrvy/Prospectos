@@ -38,7 +38,13 @@ def test_generate_outreach_uses_latest_audit_opportunity_data(client, monkeypatc
         "url": "https://abcplumbing.com",
         "quality_category": "WEAK",
         "opportunity_types": ["AI_CHATBOT", "MOBILE_IMPROVEMENT"],
-        "opportunity_reasons": ["No chatbot.", "No viewport."],
+            "opportunity_reasons": ["No chatbot.", "No viewport."],
+            "opportunity_assessments": [{
+                "classification": "PRIMARY",
+                "opportunity_type": "AI_CHATBOT",
+                "outreach_observation": "visitors have information to browse but no direct way to ask a question on the site",
+                "possible_impact": "This could make common questions easier to answer.",
+            }],
         "ai_opportunity_score": 70,
         "redesign_opportunity_score": 50,
         "overall_opportunity_score": 60,
@@ -59,6 +65,26 @@ def test_generate_outreach_uses_latest_audit_opportunity_data(client, monkeypatc
     assert captured["opportunity_reasons"] == ["No chatbot.", "No viewport."]
 
 
+def test_generate_outreach_falls_back_to_legacy_audit_findings(client, monkeypatch):
+    created = _create_business(client)
+
+    monkeypatch.setattr(businesses_api, "run_audit", lambda business: {
+        "url": "https://abcplumbing.com",
+        "quality_category": "AVERAGE",
+        "opportunity_types": ["CONVERSION_IMPROVEMENT", "FAQ_AUTOMATION"],
+        "opportunity_reasons": ["The contact path is hard to find.", "Visitors have no quick answers to common questions."],
+        "opportunity_assessments": None,
+        "ai_opportunity_score": 60,
+        "redesign_opportunity_score": 40,
+        "overall_opportunity_score": 55,
+    })
+    client.post(f"/api/businesses/{created['id']}/audit")
+    monkeypatch.setattr(businesses_api, "generate_outreach_draft", lambda **kwargs: _fake_draft())
+
+    response = client.post(f"/api/businesses/{created['id']}/outreach", json={})
+    assert response.status_code == 201, response.text
+
+
 def test_regenerate_outreach_creates_new_row_not_overwrite(client, monkeypatch):
     created = _create_business(client)
 
@@ -71,6 +97,30 @@ def test_regenerate_outreach_creates_new_row_not_overwrite(client, monkeypatch):
     detail = client.get(f"/api/businesses/{created['id']}").json()
     assert len(detail["outreach_drafts"]) == 2
     assert detail["outreach_drafts"][0]["subject"] == "Second draft"
+
+
+def test_approval_queue_shows_only_latest_actionable_draft_per_business(client, monkeypatch):
+    created = _create_business(client, email="owner@example.com")
+
+    monkeypatch.setattr(businesses_api, "generate_outreach_draft", lambda **kwargs: _fake_draft(subject="First draft"))
+    first = client.post(f"/api/businesses/{created['id']}/outreach", json={})
+    assert first.status_code == 201
+
+    monkeypatch.setattr(businesses_api, "generate_outreach_draft", lambda **kwargs: _fake_draft(subject="Latest draft"))
+    latest = client.post(f"/api/businesses/{created['id']}/outreach", json={})
+    assert latest.status_code == 201
+
+    queue = client.get("/api/gmail/approval-queue")
+    assert queue.status_code == 200, queue.text
+    assert queue.json()["items"] == [{
+        "outreach_id": latest.json()["id"],
+        "business_id": created["id"],
+        "business_name": "ABC Plumbing",
+        "email": "owner@example.com",
+        "subject": "Latest draft",
+        "approval_status": "DRAFT",
+        "created_at": latest.json()["created_at"],
+    }]
 
 
 def test_generate_outreach_business_not_found_returns_404(client):

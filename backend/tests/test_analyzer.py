@@ -111,6 +111,14 @@ def test_discovered_email_filters_denylisted_boilerplate_domains():
     assert findings.discovered_email is None
 
 
+def test_detects_semantic_live_chat_widget_text():
+    html = "<html><body><div>Recent Conversations</div><p>We'll respond as soon as we can.</p></body></html>"
+    result = CrawlResult(start_url="https://realbiz.com")
+    result.pages = [PageResult(url="https://realbiz.com", status_code=200, html=html, depth=0)]
+
+    assert analyze_crawl(result).has_live_chat is True
+
+
 def test_quality_category_thresholds():
     assert quality_category_for_score(95) == "EXCELLENT"
     assert quality_category_for_score(80) == "GOOD"

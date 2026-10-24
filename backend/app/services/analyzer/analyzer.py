@@ -20,7 +20,10 @@ _EMAIL_DOMAIN_DENYLIST = (
     "googleapis.com", "cloudflare.com", "sentry-next.wixpress.com",
 )
 
-_LIVE_CHAT_SIGNALS = ["tawk.to", "intercom", "drift.com", "crisp.chat", "zendesk", "livechatinc", "tidio"]
+_LIVE_CHAT_SIGNALS = [
+    "tawk.to", "intercom", "drift.com", "crisp.chat", "zendesk", "livechatinc", "tidio",
+    "recent conversations", "we'll respond as soon as we can",
+]
 _AI_CHATBOT_SIGNALS = ["chatbase", "voiceflow", "chatbot", "ai assistant", "aichat", "botpress", "landbot"]
 _BOOKING_SIGNALS = ["calendly", "book now", "schedule an appointment", "acuityscheduling", "book online", "bookings"]
 _FAQ_SIGNALS = ["faq", "frequently asked questions"]

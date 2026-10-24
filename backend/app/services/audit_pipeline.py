@@ -3,12 +3,13 @@ from urllib.parse import urlparse
 import httpx
 
 from app.models.business import Business
-from app.services.analyzer.analyzer import analyze_crawl, quality_category_for_score
+from app.services.analyzer.analyzer import AnalysisFindings, analyze_crawl, quality_category_for_score
 from app.services.crawler.crawler import crawl_website
 from app.services.crawler.fetcher import PageFetcher
 from app.services.crawler.playwright_fetcher import PlaywrightFetcher
 from app.services.crawler.screenshot import capture_screenshots
 from app.services.scoring.scoring import score_no_website, score_website
+from app.services.opportunities import assess_opportunities, build_website_context
 
 ROBOTS_TIMEOUT_SECONDS = 10.0
 
@@ -37,11 +38,14 @@ def run_audit(business: Business, fetcher: PageFetcher | None = None) -> dict:
 
     if not business.website:
         result = score_no_website()
+        assessments = assess_opportunities(business, AnalysisFindings(url=""), {})
         return {
             "url": None,
             "quality_category": result.quality_category,
             "opportunity_types": result.opportunity_types,
             "opportunity_reasons": result.opportunity_reasons,
+            "opportunity_assessments": assessments,
+            "website_context": {},
             "ai_opportunity_score": result.ai_opportunity_score,
             "redesign_opportunity_score": result.redesign_opportunity_score,
             "overall_opportunity_score": result.overall_opportunity_score,
@@ -64,6 +68,8 @@ def run_audit(business: Business, fetcher: PageFetcher | None = None) -> dict:
     findings = analyze_crawl(crawl_result)
     quality_category = quality_category_for_score(findings.website_quality_score)
     scoring_result = score_website(findings, quality_category)
+    website_context = build_website_context(crawl_result, findings)
+    assessments = assess_opportunities(business, findings, website_context)
 
     summary = (
         f"{quality_category} website scoring {findings.website_quality_score}/100 overall, "
@@ -105,6 +111,8 @@ def run_audit(business: Business, fetcher: PageFetcher | None = None) -> dict:
         "overall_opportunity_score": scoring_result.overall_opportunity_score,
         "opportunity_types": scoring_result.opportunity_types,
         "opportunity_reasons": scoring_result.opportunity_reasons,
+        "opportunity_assessments": assessments,
+        "website_context": website_context,
         "audit_summary": summary,
         "screenshot_desktop_path": desktop_screenshot,
         "screenshot_mobile_path": mobile_screenshot,

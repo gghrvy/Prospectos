@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("relative rounded-md border border-border bg-panel", className)}
+      className={cn("relative rounded-lg border border-border/80 bg-panel", className)}
       {...props}
     />
   );
@@ -16,7 +16,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
 // so it reads as emphasis rather than decoration.
 export function PrimaryCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <Card className={cn("bracket-frame border-t-2 border-t-signal/60", className)} {...props} />
+  <Card className={cn("border-t-2 border-t-signal/70 shadow-[0_12px_36px_rgba(0,0,0,.16)]", className)} {...props} />
   );
 }
 
@@ -27,7 +27,7 @@ export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
 export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn("font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground", className)}
+      className={cn("text-sm font-semibold tracking-tight text-foreground", className)}
       {...props}
     />
   );

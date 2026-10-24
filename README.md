@@ -39,6 +39,44 @@ npm install
 .\scripts\dev.ps1
 ```
 
+### Public demo deployment
+
+ProspectOS now has a safe public demonstration mode backed by four prepared,
+fictional businesses. It uses the normal dashboard, prospect detail, scoring,
+evidence, recommendation, and outreach-preview views, but does not access a
+database, crawl sites, call discovery/AI providers, or connect to Gmail.
+
+Configure both deployments before publishing:
+
+```text
+# backend (ENVIRONMENT=production defaults to demo mode; set this explicitly too)
+DEMO_MODE=true
+CORS_ORIGINS=https://your-frontend.example
+
+# frontend (available at build time)
+NEXT_PUBLIC_DEMO_MODE=true
+NEXT_PUBLIC_API_BASE_URL=https://your-backend.example
+```
+
+The backend independently rejects all operations except reading the prepared
+catalogue and replaying a prepared audit. This includes Gmail OAuth/send,
+arbitrary URL crawling/Playwright, discovery, CSV import/export, AI-backed
+actions, and every database mutation. No Supabase or Gmail credential is
+needed for this mode. The crawler browser dependency is also unnecessary for
+the public demo because Playwright is never invoked.
+
+For normal local development, leave both variables `false` (or unset). A
+production backend without a `DEMO_MODE` setting also defaults to demo mode;
+the frontend follows the same production-default behavior. Set
+`DEMO_MODE=false` and `NEXT_PUBLIC_DEMO_MODE=false` only for an intentionally
+provisioned live deployment.
+This
+preserves live discovery, database, Playwright, optional Ollama, and Gmail
+capabilities. Do not point a public demo backend at a production database as a
+deployment practice; although Demo Mode does not query it through its public
+API, a separate demo deployment with no live credentials is the cleanest
+operational boundary.
+
 `dev.ps1` runs the backend (http://localhost:8000, docs at `/docs`) and
 frontend (http://localhost:3000) as hidden background processes — no popup
 CMD/PowerShell windows, everything stays inside whatever terminal you ran

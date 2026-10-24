@@ -74,6 +74,10 @@ class WebsiteAudit(Base):
     # List of human-readable reason strings behind the opportunity score.
     opportunity_reasons: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
+    # Context-aware commercial interpretation of broad crawler findings.
+    opportunity_assessments: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    website_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     screenshot_desktop_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     screenshot_mobile_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 

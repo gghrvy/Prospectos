@@ -31,6 +31,8 @@ class DiscoveredBusiness(BaseModel):
     google_maps_url: str | None = None
     rating: float | None = None
     review_count: int | None = None
+    prospect_fit_score: int | None = None
+    prospect_fit_reason: str | None = None
 
 
 def social_url_from_tags(tags: dict) -> str | None:

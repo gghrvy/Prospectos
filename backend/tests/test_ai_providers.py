@@ -23,7 +23,7 @@ def test_template_provider_uses_only_given_observations():
     # this asserts on the grounded fact it's still built from, not the
     # literal audit-tool phrasing.
     assert "instant answer outside" in body.lower()
-    assert "plumber" in body.lower()
+    assert "plumber" not in body.lower()  # category jargon is not needed in the recipient-facing draft
     # Never insults — no negative adjectives about the business itself.
     assert "bad" not in body.lower() and "terrible" not in body.lower()
 
@@ -75,7 +75,7 @@ def test_template_provider_greets_generically_not_by_business_name():
     assert "Hi there," in body
 
 
-def test_template_provider_cites_real_strong_rating_as_social_proof():
+def test_template_provider_keeps_first_touch_concise_even_with_rating_data():
     provider = TemplateProvider()
     _, body = provider.generate_outreach(
         "ABC Plumbing",
@@ -84,8 +84,8 @@ def test_template_provider_cites_real_strong_rating_as_social_proof():
         [],
         social_proof={"rating": 4.8, "review_count": 42},
     )
-    assert "4.8" in body
-    assert "42 reviews" in body
+    assert "4.8" not in body
+    assert "42 reviews" not in body
 
 
 def test_template_provider_omits_social_proof_when_rating_is_thin_or_missing():

@@ -64,6 +64,8 @@ class OllamaProvider(AIProvider):
             "Use ONLY these verified observations about their website — never invent facts, never insult them:\n"
             f"{observations_text}\n\n"
             f"The angle to pitch is: {angle}.\n"
+            "Use plain sentences. Do not use em dashes.\n"
+            "Write a concise, conversational email in an Observation → Idea → CTA structure. Do not repeat the observation as a separate problem and solution explanation. Vary the opening and subject naturally. Keep it to 60-100 words, avoid agency language, and ask only for permission to send a mockup.\n"
             f"{proof_instruction}"
             "Structure and copywriting guidance (honest persuasion only — no fake urgency/scarcity, no invented "
             "social proof, nothing beyond what these observations actually support):\n"

@@ -106,6 +106,22 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  gmailStatus: () => request<{ connected: boolean; email: string | null }>("/api/gmail/status"),
+  gmailActivity: () => request<{ sent_today: number; daily_limit: number; items: { id: string; outreach_id: string | null; business_id: string | null; action: string; detail: string | null; created_at: string }[] }>("/api/gmail/activity"),
+  gmailReport: () => request<{ sent: number; failed: number; replied: number; approved: number; queued: number; POSITIVE_REPLY: number; MEETING: number; PROPOSAL: number; WON: number }>("/api/gmail/report"),
+  syncGmailReplies: () => request<{ replies_detected: number }>("/api/gmail/sync-replies", { method: "POST" }),
+  outreachApprovalQueue: () => request<{ items: { outreach_id: string; business_id: string; business_name: string; email: string; subject: string | null; approval_status: string; created_at: string }[] }>("/api/gmail/approval-queue"),
+  listOutreachBatches: () => request<{ id: string; name: string; status: string; created_at: string; count: number; timezone: string }[]>("/api/gmail/batches"),
+  createOutreachBatch: (name: string, outreachIds: string[]) => request<{ id: string; name: string; count: number; status: string }>("/api/gmail/batches", { method: "POST", body: JSON.stringify({ name, outreach_ids: outreachIds }) }),
+  dispatchOutreachBatch: (id: string) => request<{ sent: number; failed: number; remaining_daily_capacity: number }>(`/api/gmail/batches/${id}/dispatch`, { method: "POST" }),
+  controlOutreachBatch: (id: string, action: "pause" | "resume" | "cancel") => request<{ id: string; status: string }>(`/api/gmail/batches/${id}/${action}`, { method: "POST" }),
+  gmailConnectUrl: () => `${API_BASE_URL}/api/gmail/connect`,
+  sendOutreach: (id: string) => request<{ sent: boolean; to: string; from: string }>(`/api/gmail/outreach/${id}/send`, { method: "POST" }),
+  approveOutreach: (id: string) => request<{ approved: boolean }>(`/api/gmail/outreach/${id}/approve`, { method: "POST" }),
+
+  generateVisualBrief: (id: string) =>
+    request<{ content: string }>(`/api/businesses/${id}/visual-brief`, { method: "POST" }),
+
   addNote: (id: string, payload: NoteCreateInput) =>
     request<Note>(`/api/businesses/${id}/notes`, { method: "POST", body: JSON.stringify(payload) }),
 

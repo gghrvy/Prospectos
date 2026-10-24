@@ -4,6 +4,9 @@ from app.models.lead_status_history import LeadStatusHistory
 from app.models.note import Note
 from app.models.outreach import Outreach
 from app.models.sender import Sender
+from app.models.gmail_connection import GmailConnection
+from app.models.outreach_activity import OutreachActivity
+from app.models.outreach_batch import OutreachBatch
 from app.models.website_audit import WebsiteAudit
 
 __all__ = [
@@ -14,4 +17,7 @@ __all__ = [
     "Note",
     "Sender",
     "Contract",
+    "GmailConnection",
+    "OutreachActivity",
+    "OutreachBatch",
 ]

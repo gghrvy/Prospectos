@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { OpportunityScoreBadge, QualityBadge, StatusBadge } from "@/components/ui/badge";
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { api, ApiError } from "@/lib/api";
+import { isDemoMode } from "@/lib/runtime";
 import { WEBSITE_STATUSES, type BusinessListItem } from "@/lib/types";
 
 const LIMIT = 25;
@@ -172,6 +174,7 @@ export default function ProspectsPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {isDemoMode && <div className="rounded-lg border border-signal/40 bg-signal/10 px-4 py-3 text-sm"><span className="font-mono text-xs font-medium uppercase tracking-wider text-signal">Demo mode</span><p className="mt-1 text-muted-foreground">These fictional prospects are prepared examples. You can open one and replay its safe sample audit; live prospect changes are disabled.</p></div>}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Prospects</h1>
@@ -179,21 +182,25 @@ export default function ProspectsPage() {
         </div>
         <div className="flex gap-2">
           {selected.size > 0 && (
-            <>
-              <Button variant="outline" disabled={auditing || deleting} onClick={handleAuditSelected}>
+            <div className="fixed inset-x-4 bottom-4 z-20 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-lg border border-border bg-panel-raised px-3 py-2 shadow-2xl sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2">
+              <span className="whitespace-nowrap text-sm font-medium">{selected.size} selected</span>
+              <div className="flex gap-2">
+              <Button size="sm" variant="outline" disabled={auditing || deleting} onClick={handleAuditSelected}>
                 {auditing
                   ? `Auditing ${auditProgress ? auditProgress.done + 1 : 1}/${auditProgress?.total ?? selected.size}…`
                   : `Run audit on selected (${selected.size})`}
               </Button>
-              <Button variant="outline" disabled={deleting || auditing} onClick={handleDeleteSelected}>
+              <Button size="sm" variant="outline" disabled={deleting || auditing} onClick={handleDeleteSelected}>
                 {deleting ? "Deleting…" : `Delete selected (${selected.size})`}
               </Button>
-            </>
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+              </div>
+            </div>
           )}
-          <Button variant="outline" onClick={() => setShowAddForm((v) => !v)}>
+          {!isDemoMode && <Button variant="outline" onClick={() => setShowAddForm((v) => !v)}>
             {showAddForm ? "Cancel" : "Add manually"}
-          </Button>
-          <Button variant="outline" disabled={importing} onClick={() => fileInputRef.current?.click()}>
+          </Button>}
+          <Button variant="outline" disabled={isDemoMode || importing} onClick={() => fileInputRef.current?.click()}>
             {importing ? "Importing…" : "Import CSV"}
           </Button>
           <input
@@ -214,10 +221,10 @@ export default function ProspectsPage() {
 
       {showAddForm && <AddProspectForm onCreated={() => { setShowAddForm(false); load(); }} />}
 
-      <form onSubmit={applyFilters} className="flex flex-wrap items-end gap-3 rounded-lg border border-border p-4">
-        <div>
-          <Label>Search name</Label>
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="e.g. Plumbing" />
+      <form onSubmit={applyFilters} className="flex flex-wrap items-end gap-3 border-y border-border/70 py-4">
+        <div className="min-w-[250px] flex-1">
+          <Label>Search prospects</Label>
+          <div className="relative"><Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Business, city, or category…" className="pl-9" /></div>
         </div>
         <div>
           <Label>City</Label>
@@ -261,13 +268,14 @@ export default function ProspectsPage() {
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="data-table">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-panel-raised text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <tr className="text-left">
               <th className="w-8 px-4 py-2 font-medium">
                 <input
                   type="checkbox"
+                  disabled={isDemoMode}
                   checked={items.length > 0 && selected.size === items.length}
                   onChange={toggleAll}
                   aria-label="Select all"
@@ -298,10 +306,11 @@ export default function ProspectsPage() {
               </tr>
             ) : (
               items.map((b) => (
-                <tr key={b.id} className="border-t border-border hover:bg-white/5">
+                <tr key={b.id}>
                   <td className="px-4 py-2">
                     <input
                       type="checkbox"
+                      disabled={isDemoMode}
                       checked={selected.has(b.id)}
                       onChange={() => toggleOne(b.id)}
                       aria-label={`Select ${b.name}`}
@@ -311,6 +320,7 @@ export default function ProspectsPage() {
                     <Link href={`/prospects/${b.id}`} className="font-medium hover:underline">
                       {b.name}
                     </Link>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{[b.category, b.city].filter(Boolean).join(" · ") || "No category or location"}</p>
                   </td>
                   <td className="px-4 py-2 text-muted-foreground">{b.category ?? "—"}</td>
                   <td className="px-4 py-2 text-muted-foreground">{b.city ?? "—"}</td>
@@ -349,13 +359,7 @@ export default function ProspectsPage() {
                     <StatusBadge status={b.current_status} />
                   </td>
                   <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteOne(b.id, b.name)}
-                      className="font-mono text-[10px] uppercase tracking-wider text-red-400 hover:underline"
-                    >
-                      Delete
-                    </button>
+                    <details className="relative"><summary className="cursor-pointer list-none text-lg leading-none text-muted-foreground hover:text-foreground">•••</summary><div className="absolute right-0 z-10 mt-1 w-32 rounded-md border border-border bg-panel-raised p-1 shadow-xl"><Link href={`/prospects/${b.id}`} className="block rounded px-2 py-1.5 text-sm hover:bg-white/5">Open</Link><button type="button" onClick={() => handleDeleteOne(b.id, b.name)} className="w-full rounded px-2 py-1.5 text-left text-sm text-red-400 hover:bg-red-500/10">Delete</button></div></details>
                   </td>
                 </tr>
               ))

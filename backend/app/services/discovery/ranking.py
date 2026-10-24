@@ -49,22 +49,17 @@ def score_business(business: DiscoveredBusiness) -> int:
     human can still send a direct message -- so it sits between the
     "has website" and "has nothing" tiers rather than at the bottom.
     """
-    if business.email:
-        score = 6
-    elif business.website:
-        score = 4
-    elif business.social_url:
-        score = 2
-    else:
-        score = 0
-
-    if business.phone:
-        score += 1
-    if not business.website:
-        score += 1
-    if business.address:
-        score += 1
-    return score
+    score = 0
+    if business.email: score += 35
+    elif business.website: score += 22
+    elif business.social_url: score += 10
+    if business.website: score += 12
+    else: score += 18
+    if business.phone: score += 10
+    if business.address: score += 10
+    if business.review_count and business.review_count >= 25: score += 10
+    if business.rating and business.rating >= 4: score += 5
+    return min(100, score)
 
 
 def rank_and_limit(results: list[DiscoveredBusiness], limit: int) -> list[DiscoveredBusiness]:
@@ -72,5 +67,14 @@ def rank_and_limit(results: list[DiscoveredBusiness], limit: int) -> list[Discov
     relative order, usually roughly distance-based) and returns the top
     `limit`. Call this AFTER collecting the full candidate set, never
     while still iterating/fetching, or there's nothing to rank against."""
-    ranked = sorted(results, key=score_business, reverse=True)
+    for business in results:
+        score = score_business(business)
+        reasons = []
+        if business.email: reasons.append("email ready")
+        elif business.website: reasons.append("website to audit")
+        if business.review_count and business.review_count >= 25: reasons.append(f"{business.review_count} reviews")
+        if not business.website: reasons.append("no website")
+        business.prospect_fit_score = score
+        business.prospect_fit_reason = ", ".join(reasons) or "limited contact data"
+    ranked = sorted(results, key=lambda item: item.prospect_fit_score or 0, reverse=True)
     return ranked[:limit]

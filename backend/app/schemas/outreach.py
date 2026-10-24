@@ -29,3 +29,7 @@ class OutreachRead(BaseModel):
     sender_phone: str | None = None
     sender_portfolio_url: str | None = None
     created_at: datetime
+    sent_at: datetime | None = None
+    sent_to: str | None = None
+    approval_status: str = "DRAFT"
+    batch_id: str | None = None

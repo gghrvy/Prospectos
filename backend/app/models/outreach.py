@@ -36,3 +36,13 @@ class Outreach(Base):
     sender_portfolio_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approval_status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT")
+    batch_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("outreach_batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    gmail_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    gmail_thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    followup_of_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("outreach.id", ondelete="SET NULL"), nullable=True, index=True)
+    followup_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    followup_paused: Mapped[bool] = mapped_column(default=False, nullable=False)

@@ -1,5 +1,6 @@
 from app.services.ai.base import AIProvider
-from app.services.outreach.generator import generate_outreach_draft, pick_angle
+from app.services.ai.template_provider import TemplateProvider
+from app.services.outreach.generator import generate_outreach_draft, has_internal_audit_language, pick_angle, pick_primary_angle
 
 
 class FakeProvider(AIProvider):
@@ -16,7 +17,7 @@ class FakeProvider(AIProvider):
 
 def test_pick_angle_prefers_first_matching_opportunity_type():
     assert pick_angle(["MOBILE_IMPROVEMENT", "AI_CHATBOT"]) == "MOBILE_IMPROVEMENT"
-    assert pick_angle(["ANALYTICS", "AI_CHATBOT"]) == "AI_CHATBOT"  # ANALYTICS has no mapped angle
+    assert pick_angle(["ANALYTICS", "AI_CHATBOT"]) == "ANALYTICS"
     assert pick_angle([]) == "FULL_DIGITAL_UPGRADE"
 
 
@@ -65,3 +66,24 @@ def test_generate_outreach_draft_respects_explicit_angle_override():
         generated_by="template",
     )
     assert draft["angle"] == "BOOKING"
+
+
+def test_primary_outreach_uses_customer_facing_observation_not_internal_evidence():
+    draft = generate_outreach_draft(
+        business_name="Ants Pants Cafe",
+        category="Cafe",
+        opportunity_types=["AI_CHATBOT"],
+        opportunity_reasons=["No AI chatbot was detected on the crawled pages."],
+        provider=TemplateProvider(),
+        opportunity_assessments=[{
+            "classification": "PRIMARY", "opportunity_type": "AI_CHATBOT",
+            "outreach_observation": "visitors can browse menu and location information, but do not have a quick way to ask a question directly on the site",
+            "possible_impact": "A small assistant could make common questions easier to answer while keeping existing contact options in place.",
+        }],
+    )
+    assert not has_internal_audit_language(draft["body"])
+    assert "quick way to ask a question" in draft["body"]
+
+
+def test_no_primary_angle_is_not_auto_pickable():
+    assert pick_primary_angle([{"classification": "SECONDARY", "opportunity_type": "LEAD_CAPTURE"}]) is None

@@ -40,6 +40,11 @@ export const OUTREACH_ANGLES = [
   "AI_CHATBOT",
   "BOOKING",
   "LEAD_CAPTURE",
+  "CONVERSION_IMPROVEMENT",
+  "FAQ_AUTOMATION",
+  "CUSTOMER_SUPPORT_AUTOMATION",
+  "ANALYTICS",
+  "CUSTOM_AI_AUTOMATION",
   "FULL_DIGITAL_UPGRADE",
 ] as const;
 export type OutreachAngle = (typeof OUTREACH_ANGLES)[number];
@@ -48,9 +53,13 @@ export const LEAD_STATUSES = [
   "NEW",
   "AUDITED",
   "QUALIFIED",
+  "OUTREACH_READY",
   "CONTACTED",
   "FOLLOW_UP",
   "REPLIED",
+  "INTERESTED",
+  "CONCEPT_SENT",
+  "DISCUSSION",
   "DEMO_SENT",
   "CALL_BOOKED",
   "PROPOSAL",
@@ -82,6 +91,8 @@ export interface Business {
   google_maps_url: string | null;
   rating: number | null;
   review_count: number | null;
+  prospect_fit_score?: number | null;
+  prospect_fit_reason?: string | null;
   website_status: string | null;
   created_at: string;
   updated_at: string;
@@ -149,9 +160,29 @@ export interface WebsiteAudit {
   opportunity_types: string[] | null;
   audit_summary: string | null;
   opportunity_reasons: string[] | null;
+  opportunity_assessments: OpportunityAssessment[] | null;
+  website_context: Record<string, unknown> | null;
   screenshot_desktop_path: string | null;
   screenshot_mobile_path: string | null;
   created_at: string;
+}
+
+export interface OpportunityAssessment {
+  opportunity_type: string;
+  evidence: string;
+  business_interpretation: string;
+  outreach_observation: string;
+  evidence_confidence: number;
+  business_relevance: number;
+  estimated_business_impact: number;
+  outreach_suitability: number;
+  visual_demo_score: number;
+  recommendation_score: number;
+  reasoning: string;
+  possible_impact: string;
+  recommended_concept: string;
+  customer_flow: string;
+  classification: "PRIMARY" | "SECONDARY" | "REJECTED";
 }
 
 export interface Outreach {
@@ -168,6 +199,9 @@ export interface Outreach {
   sender_phone: string | null;
   sender_portfolio_url: string | null;
   created_at: string;
+  sent_at: string | null;
+  sent_to: string | null;
+  approval_status: string;
 }
 
 export interface Sender {
@@ -277,6 +311,8 @@ export interface DiscoveredBusiness {
   google_maps_url: string | null;
   rating: number | null;
   review_count: number | null;
+  prospect_fit_score?: number | null;
+  prospect_fit_reason?: string | null;
 }
 
 export interface OSMSearchRequest {
@@ -324,9 +360,13 @@ export const LEAD_STATUS_LABELS: Record<string, string> = {
   NEW: "New",
   AUDITED: "Audited",
   QUALIFIED: "Qualified",
+  OUTREACH_READY: "Outreach ready",
   CONTACTED: "Contacted",
   FOLLOW_UP: "Follow-up",
   REPLIED: "Replied",
+  INTERESTED: "Interested",
+  CONCEPT_SENT: "Concept sent",
+  DISCUSSION: "Discussion",
   DEMO_SENT: "Demo sent",
   CALL_BOOKED: "Call booked",
   PROPOSAL: "Proposal",

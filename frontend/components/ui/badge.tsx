@@ -45,6 +45,12 @@ function meterColor(score: number): string {
   return "text-red-400";
 }
 
+function meterLabel(score: number): string {
+  if (score >= 70) return "High";
+  if (score >= 40) return "Moderate";
+  return "Low";
+}
+
 export function SignalMeter({
   score,
   size = "sm",
@@ -73,9 +79,7 @@ export function SignalMeter({
           />
         ))}
       </span>
-      <span className={cn("tabular-nums", color, size === "lg" ? "text-lg font-semibold" : "text-sm font-medium")}>
-        {score}
-      </span>
+      <span className="flex items-baseline gap-1.5"><span className={cn("tabular-nums", color, size === "lg" ? "text-lg font-semibold" : "text-sm font-medium")}>{score}</span><span className="hidden font-mono text-[9px] uppercase tracking-wider text-muted-foreground sm:inline">{meterLabel(score)}</span></span>
     </span>
   );
 }

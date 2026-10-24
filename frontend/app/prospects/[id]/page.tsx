@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
 import { Input } from "@/components/ui/input";
+import { isDemoMode } from "@/lib/runtime";
 import {
   CONTRACT_TYPE_LABELS,
   LEAD_STATUSES,
@@ -21,6 +22,7 @@ import {
   type BusinessDetail,
   type ContractType,
   type Sender,
+  type WebsiteAudit,
 } from "@/lib/types";
 
 export default function ProspectDetailPage() {
@@ -32,11 +34,16 @@ export default function ProspectDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [auditing, setAuditing] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingVisualBrief, setGeneratingVisualBrief] = useState(false);
+  const [visualBrief, setVisualBrief] = useState<string | null>(null);
   const [angle, setAngle] = useState("");
+  const [activeTab, setActiveTab] = useState<"overview" | "audit" | "outreach" | "activity" | "documents">("overview");
 
   const [senders, setSenders] = useState<Sender[]>([]);
   const [senderId, setSenderId] = useState("");
   const [showAddSender, setShowAddSender] = useState(false);
+  const [gmail, setGmail] = useState<{ connected: boolean; email: string | null }>({ connected: false, email: null });
+  const [sendingDraftId, setSendingDraftId] = useState<string | null>(null);
 
   const [contractType, setContractType] = useState<ContractType>("SERVICE_AGREEMENT");
   const [studioName, setStudioName] = useState("");
@@ -82,6 +89,36 @@ export default function ProspectDetailPage() {
   }, []);
 
   useEffect(() => {
+    api.gmailStatus().then(setGmail).catch(() => {});
+  }, []);
+
+  async function handleSendDraft(draftId: string) {
+    if (!confirm("Send this outreach email now? This cannot be unsent.")) return;
+    setSendingDraftId(draftId);
+    setError(null);
+    try {
+      await api.sendOutreach(draftId);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Email could not be sent.");
+    } finally {
+      setSendingDraftId(null);
+    }
+  }
+  async function handleApproveDraft(draftId: string) {
+    setSendingDraftId(draftId);
+    setError(null);
+    try {
+      await api.approveOutreach(draftId);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Draft could not be approved.");
+    } finally {
+      setSendingDraftId(null);
+    }
+  }
+
+  useEffect(() => {
     if (senderId) localStorage.setItem("prospectos_sender_id", senderId);
   }, [senderId]);
 
@@ -99,6 +136,10 @@ export default function ProspectDetailPage() {
   }
 
   async function handleGenerateOutreach() {
+    if (isDemoMode) {
+      setActiveTab("outreach");
+      return;
+    }
     setGenerating(true);
     setError(null);
     try {
@@ -108,6 +149,23 @@ export default function ProspectDetailPage() {
       setError(err instanceof ApiError ? err.message : "Outreach generation failed.");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleGenerateVisualBrief() {
+    if (isDemoMode) {
+      setVisualBrief("Prepared demo insight: use the primary evidence-backed opportunity as the focal point of a concise concept presentation. No AI service was called.");
+      return;
+    }
+    setGeneratingVisualBrief(true);
+    setError(null);
+    try {
+      const result = await api.generateVisualBrief(businessId);
+      setVisualBrief(result.content);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Visual Brief generation failed.");
+    } finally {
+      setGeneratingVisualBrief(false);
     }
   }
 
@@ -160,6 +218,7 @@ export default function ProspectDetailPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {isDemoMode && <div className="rounded-lg border border-signal/40 bg-signal/10 px-4 py-3 text-sm"><p className="font-mono text-xs font-medium uppercase tracking-wider text-signal">Demo mode</p><p className="mt-1 text-muted-foreground">All records and findings here are prepared fictional examples. The audit replay and draft preview do not access websites, AI services, Gmail, or external accounts.</p></div>}
       <div>
         <Link href="/prospects" className="text-sm text-muted-foreground hover:underline">
           ← Back to prospects
@@ -177,19 +236,23 @@ export default function ProspectDetailPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleRunAudit} disabled={auditing}>
-            {auditing ? "Auditing…" : business.audits.length ? "Re-run audit" : "Run audit"}
+          <Button onClick={handleGenerateOutreach} disabled={generating}>
+            {generating ? "Generating…" : isDemoMode ? "View draft preview" : "Generate outreach"}
           </Button>
-          <Button variant="destructive" onClick={handleDelete}>
-            Delete
+          <Button variant="outline" onClick={handleRunAudit} disabled={auditing}>
+            {auditing ? "Auditing…" : isDemoMode ? "Run demo audit" : business.audits.length ? "Re-run audit" : "Run audit"}
           </Button>
+          <details className="relative"><summary className="flex h-9 cursor-pointer list-none items-center rounded-md border border-border px-3 text-sm text-muted-foreground hover:text-foreground">More</summary><div className="absolute right-0 z-10 mt-1 w-36 rounded-md border border-border bg-panel-raised p-1 shadow-xl"><button type="button" onClick={handleDelete} className="w-full rounded px-2 py-1.5 text-left text-sm text-red-400 hover:bg-red-500/10">Delete prospect</button></div></details>
         </div>
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card>
+      <div className="flex gap-1 overflow-x-auto border-b border-border/70"><Tab label="Overview" active={activeTab === "overview"} onClick={() => setActiveTab("overview")} /><Tab label="Audit" active={activeTab === "audit"} onClick={() => setActiveTab("audit")} /><Tab label="Outreach" active={activeTab === "outreach"} onClick={() => setActiveTab("outreach")} /><Tab label="Activity" active={activeTab === "activity"} onClick={() => setActiveTab("activity")} /><Tab label="Documents" active={activeTab === "documents"} onClick={() => setActiveTab("documents")} /></div>
+
+      <div className={activeTab === "overview" || activeTab === "audit" ? "grid grid-cols-1 gap-8 xl:grid-cols-[300px_minmax(0,1fr)]" : "block"}>
+      <div className={`order-2 flex flex-col gap-4 xl:order-1 ${activeTab === "overview" || activeTab === "audit" ? "" : "hidden"}`}>
+      <Card>
           <CardHeader>
             <CardTitle>Contact info</CardTitle>
           </CardHeader>
@@ -228,12 +291,12 @@ export default function ProspectDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
+      <Card>
           <CardHeader>
             <CardTitle>Lead status</CardTitle>
           </CardHeader>
           <CardContent>
-            <StatusChangeForm businessId={businessId} onChanged={load} />
+            {isDemoMode ? <p className="text-xs text-muted-foreground">Status changes are disabled in the public demo.</p> : <StatusChangeForm businessId={businessId} onChanged={load} />}
             <div className="mt-4 flex flex-col gap-2">
               {business.status_history.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No status changes yet.</p>
@@ -252,7 +315,7 @@ export default function ProspectDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
+      <Card>
           <CardHeader>
             <CardTitle>Scores</CardTitle>
           </CardHeader>
@@ -281,6 +344,7 @@ export default function ProspectDetailPage() {
           </CardContent>
         </Card>
       </div>
+      <section className="order-1 flex min-w-0 flex-col gap-6 xl:order-2">
 
       {audit && (
         <PrimaryCard>
@@ -290,7 +354,7 @@ export default function ProspectDetailPage() {
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm">{audit.audit_summary}</p>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+            <div className="grid gap-2 sm:grid-cols-2">
               <SubScore label="Mobile" score={audit.mobile_score} />
               <SubScore label="Design" score={audit.design_score} />
               <SubScore label="Technical" score={audit.technical_score} />
@@ -344,11 +408,17 @@ export default function ProspectDetailPage() {
         </PrimaryCard>
       )}
 
-      <Card>
+      {audit && <RecommendedApproach audit={audit} onGenerateVisualBrief={handleGenerateVisualBrief} generating={generatingVisualBrief} visualBrief={visualBrief} />}
+
+        <Card className={activeTab === "outreach" ? "" : "hidden"}>
         <CardHeader>
           <CardTitle>Outreach</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-3 text-sm">
+            <span className="text-muted-foreground">{gmail.connected ? `Gmail connected: ${gmail.email}` : "Gmail is not connected."}</span>
+            {!isDemoMode && !gmail.connected && <Button variant="outline" size="sm" onClick={() => { window.location.href = api.gmailConnectUrl(); }}>Connect Gmail</Button>}
+          </div>
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <Label>Angle (optional)</Label>
@@ -372,15 +442,15 @@ export default function ProspectDetailPage() {
                 ))}
               </Select>
             </div>
-            <Button variant="outline" type="button" onClick={() => setShowAddSender((v) => !v)}>
+            {!isDemoMode && <Button variant="outline" type="button" onClick={() => setShowAddSender((v) => !v)}>
               {showAddSender ? "Cancel" : "+ Add teammate"}
-            </Button>
+            </Button>}
             <Button onClick={handleGenerateOutreach} disabled={generating}>
-              {generating ? "Generating…" : "Generate outreach draft"}
+              {generating ? "Generating…" : isDemoMode ? "View draft preview" : "Generate outreach draft"}
             </Button>
           </div>
 
-          {showAddSender && (
+          {showAddSender && !isDemoMode && (
             <AddSenderForm
               onCreated={(sender) => {
                 setShowAddSender(false);
@@ -395,7 +465,7 @@ export default function ProspectDetailPage() {
           ) : (
             <div className="flex flex-col gap-3">
               {business.outreach_drafts.map((draft) => (
-                <div key={draft.id} className="rounded-md border border-border p-3">
+                <div key={draft.id} className="border-y border-border/70 py-4 first:border-t-0">
                   <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                     <span>
                       {draft.angle?.replace(/_/g, " ") ?? "—"} · via {draft.generated_by ?? "unknown"}
@@ -403,16 +473,25 @@ export default function ProspectDetailPage() {
                     </span>
                     <span>{new Date(draft.created_at).toLocaleString()}</span>
                   </div>
-                  <p className="text-sm font-medium">{draft.subject}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{draft.body}</p>
+                  <div className="mt-3 grid gap-1 border-b border-border/70 pb-3 text-sm sm:grid-cols-[64px_1fr]"><span className="text-muted-foreground">To</span><span>{business.email ?? "No recipient email"}</span><span className="text-muted-foreground">From</span><span>{draft.sender_name ?? "No signature"}</span></div>
+                  <p className="mt-3 text-base font-semibold">{draft.subject}</p>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.body}</p>
+                  {draft.sent_at ? (
+                    <p className="mt-3 text-xs text-emerald-400">Sent to {draft.sent_to} on {new Date(draft.sent_at).toLocaleString()}</p>
+                  ) : (
+                    <div className="mt-3 flex gap-2">
+                      {isDemoMode ? <span className="text-xs text-signal">Preview only — no email will be sent.</span> : draft.approval_status !== "APPROVED" ? <Button variant="outline" size="sm" disabled={sendingDraftId === draft.id} onClick={() => handleApproveDraft(draft.id)}>{sendingDraftId === draft.id ? "Approving…" : "Approve for sending"}</Button> :
+                        <Button size="sm" disabled={!gmail.connected || !business.email || sendingDraftId === draft.id} onClick={() => handleSendDraft(draft.id)}>{sendingDraftId === draft.id ? "Sending…" : !business.email ? "No prospect email" : "Send with Gmail"}</Button>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </CardContent>
-      </Card>
+        </Card>
 
-      <Card>
+        <Card className={activeTab === "documents" ? "" : "hidden"}>
         <CardHeader>
           <CardTitle>Contracts &amp; documents</CardTitle>
         </CardHeader>
@@ -484,8 +563,8 @@ export default function ProspectDetailPage() {
               />
             </div>
           )}
-          <Button onClick={handleGenerateContract} disabled={generatingContract} className="self-start">
-            {generatingContract ? "Generating…" : `Generate ${CONTRACT_TYPE_LABELS[contractType]}`}
+          <Button onClick={handleGenerateContract} disabled={isDemoMode || generatingContract} className="self-start">
+            {generatingContract ? "Generating…" : isDemoMode ? "Document generation disabled in demo" : `Generate ${CONTRACT_TYPE_LABELS[contractType]}`}
           </Button>
 
           {business.contracts.length === 0 ? (
@@ -507,17 +586,20 @@ export default function ProspectDetailPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+        </Card>
 
-      <Card>
+        <Card className={activeTab === "activity" ? "" : "hidden"}>
         <CardHeader>
           <CardTitle>Notes</CardTitle>
         </CardHeader>
         <CardContent>
-          <NotesSection businessId={businessId} notes={business.notes} onAdded={load} />
+          <div className="mb-5 border-b border-border/70 pb-4"><p className="mb-3 text-sm font-semibold">Status history</p>{business.status_history.length ? <div className="space-y-2">{business.status_history.map((entry) => <div key={entry.id} className="flex items-start justify-between gap-3 text-sm"><div><StatusBadge status={entry.status} />{entry.note && <p className="mt-1 text-muted-foreground">{entry.note}</p>}</div><span className="shrink-0 font-mono text-[10px] text-muted-foreground">{new Date(entry.created_at).toLocaleString()}</span></div>)}</div> : <p className="text-sm text-muted-foreground">No status changes yet.</p>}</div>
+          {isDemoMode ? <p className="text-sm text-muted-foreground">Notes are disabled in the public demo.</p> : <NotesSection businessId={businessId} notes={business.notes} onAdded={load} />}
         </CardContent>
-      </Card>
-    </div>
+        </Card>
+      </section>
+      </div>
+      </div>
   );
 }
 
@@ -530,17 +612,53 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
+function Tab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return <button type="button" onClick={onClick} className={`shrink-0 border-b-2 px-3 py-2 text-sm transition-colors ${active ? "border-signal text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{label}</button>;
+}
+
+function RecommendedApproach({
+  audit, onGenerateVisualBrief, generating, visualBrief,
+}: {
+  audit: WebsiteAudit;
+  onGenerateVisualBrief: () => void;
+  generating: boolean;
+  visualBrief: string | null;
+}) {
+  const items = audit.opportunity_assessments ?? [];
+  const primary = items.find((item) => item.classification === "PRIMARY");
+  const secondary = items.filter((item) => item.classification === "SECONDARY");
+  const rejected = items.filter((item) => item.classification === "REJECTED");
+  return (
+    <Card>
+      <CardHeader><CardTitle>Recommended approach</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {!primary ? <p className="text-sm text-muted-foreground">No sufficiently strong, evidence-backed outreach angle was found. Manual outreach selection is still available.</p> : <>
+          <div className="rounded-md border border-signal/30 bg-signal/10 p-3">
+            <p className="font-mono text-[10px] uppercase tracking-wider text-signal">Primary</p>
+            <p className="mt-1 text-sm font-medium">{OPPORTUNITY_TYPE_LABELS[primary.opportunity_type] ?? primary.opportunity_type} <span className="text-muted-foreground">· {primary.recommendation_score}/100</span></p>
+            <p className="mt-2 text-sm">{primary.reasoning}</p>
+            <p className="mt-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">Evidence:</span> {primary.evidence}</p>
+            <p className="mt-1 text-xs text-muted-foreground"><span className="font-medium text-foreground">Confidence:</span> {primary.evidence_confidence}/100</p>
+          </div>
+          <Button variant="outline" onClick={onGenerateVisualBrief} disabled={generating} className="self-start">
+            {generating ? "Generating Visual Brief…" : "Generate Visual Brief"}
+          </Button>
+        </>}
+        {secondary.length > 0 && <div><p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Secondary opportunities</p><div className="flex flex-wrap gap-1.5">{secondary.map((item) => <span key={item.opportunity_type} className="rounded-sm border border-border px-2 py-0.5 text-xs">{OPPORTUNITY_TYPE_LABELS[item.opportunity_type] ?? item.opportunity_type} · {item.recommendation_score}</span>)}</div></div>}
+        {rejected.length > 0 && <div><p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Not recommended</p><div className="flex flex-wrap gap-1.5">{rejected.map((item) => <span key={item.opportunity_type} className="rounded-sm border border-border px-2 py-0.5 text-xs text-muted-foreground">{OPPORTUNITY_TYPE_LABELS[item.opportunity_type] ?? item.opportunity_type} · {item.recommendation_score}</span>)}</div></div>}
+        {visualBrief && <div><div className="flex items-center justify-between"><Label>Prospect Visual Brief</Label><Button type="button" variant="outline" onClick={() => navigator.clipboard.writeText(visualBrief)}>Copy brief</Button></div><Textarea readOnly value={visualBrief} rows={18} className="mt-1 font-mono text-xs" /></div>}
+      </CardContent>
+    </Card>
+  );
+}
+
 function SubScore({ label, score }: { label: string; score: number | null }) {
   const color = score === null ? "" : score >= 70 ? "bg-emerald-400" : score >= 40 ? "bg-amber-400" : "bg-red-400";
   return (
-    <div className="rounded-sm border border-border bg-panel-raised p-2 text-center">
-      <div className="font-mono text-lg font-semibold tabular-nums">{score ?? "—"}</div>
-      {score !== null && (
-        <div className="mx-auto mt-1 h-1 w-10 overflow-hidden rounded-full bg-border">
-          <div className={`h-full ${color}`} style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
-        </div>
-      )}
-      <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+    <div className="flex items-center gap-3 py-1.5">
+      <div className="w-28 text-sm text-muted-foreground">{label}</div>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">{score !== null && <div className={`h-full ${color}`} style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />}</div>
+      <div className="w-8 text-right font-mono text-sm font-semibold tabular-nums">{score ?? "—"}</div>
     </div>
   );
 }

@@ -66,7 +66,7 @@ def score_website(
 
     if findings.conversion_score < 60 or not findings.has_contact_form:
         opportunity_types.append(OpportunityType.CONVERSION_IMPROVEMENT.value)
-        reasons.append("Conversion elements (contact form, clear phone/email) are weak or missing, likely losing interested visitors.")
+        reasons.append("Conversion elements (contact form, clear phone/email) are weak or missing; this may make it harder for visitors to take a next step.")
 
     if not findings.has_contact_form and not findings.has_email and not findings.has_phone:
         opportunity_types.append(OpportunityType.LEAD_CAPTURE.value)
@@ -74,23 +74,23 @@ def score_website(
 
     if not findings.has_ai_chatbot:
         opportunity_types.append(OpportunityType.AI_CHATBOT.value)
-        reasons.append("No AI chatbot was detected; visitors outside business hours have no way to get instant answers.")
+        reasons.append("No AI chatbot was detected on the crawled pages.")
 
     if not findings.has_faq:
         opportunity_types.append(OpportunityType.FAQ_AUTOMATION.value)
-        reasons.append("No FAQ section was found; an automated FAQ/chatbot could reduce repetitive phone inquiries.")
+        reasons.append("No FAQ section was found on the crawled pages.")
 
     if not findings.has_booking:
         opportunity_types.append(OpportunityType.BOOKING_AUTOMATION.value)
-        reasons.append("No online booking/scheduling option was found; automating this could reduce phone-tag with customers.")
+        reasons.append("No online booking/scheduling option was found on the crawled pages.")
 
     if not findings.has_live_chat and not findings.has_ai_chatbot:
         opportunity_types.append(OpportunityType.CUSTOMER_SUPPORT_AUTOMATION.value)
-        reasons.append("No live chat or AI support was detected; customers have to call or email for basic questions.")
+        reasons.append("No live chat or AI support was detected on the crawled pages.")
 
     if not findings.has_analytics:
         opportunity_types.append(OpportunityType.ANALYTICS.value)
-        reasons.append("No analytics tracking (e.g. Google Analytics/Tag Manager) was detected, so traffic and conversions likely aren't being measured.")
+        reasons.append("No common analytics tracking signal (e.g. Google Analytics/Tag Manager) was detected on the crawled pages.")
 
     ai_signals_missing = sum(1 for field in AI_SIGNAL_FIELDS if not getattr(findings, field))
     ai_opportunity_score = round((ai_signals_missing / len(AI_SIGNAL_FIELDS)) * 100)
