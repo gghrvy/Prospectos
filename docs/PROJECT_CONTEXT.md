@@ -2,6 +2,12 @@
 
 Paste this whole file into a new Claude conversation to give it full context on this project.
 
+> **Update (2026-10):** the build status below is from the original 12-phase build.
+> Since then the project added Gmail OAuth sending (human approval required, batch
+> send windows, daily/hourly limits, background scheduler), Geoapify as a discovery
+> fallback, senders, contracts, and a public demo mode enforced at the API.
+> `CLAUDE.md` in the repo root is the current source of truth for commands and rules.
+
 ## What it is (the concept)
 
 **ProspectOS** is an internal sales-prospecting tool for a two-person web
@@ -115,8 +121,8 @@ and Postgres (shared Supabase) without any dialect-specific types.
 - No Google Maps scraping, no paid discovery/AI APIs.
 - No CAPTCHA bypass, no anti-bot stealth techniques, no auth bypass, no
   robots.txt violations, max 10 pages / depth 2 per crawl.
-- No mass/automated email sending — outreach is always drafted for a human
-  to review and send manually.
+- No mass email sending. Outreach is drafted for human review; only drafts a
+  human has approved are sent, in rate-limited batches.
 - No authentication in v1 (but the schema is structured so it could be
   added later).
 - No cloud deployment at this stage — local-only for both developers.
