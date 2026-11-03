@@ -7,7 +7,7 @@ import { ResultsTable } from "@/components/discover/results-table";
 import { useSaveResults } from "@/components/discover/use-save-results";
 import { MapPicker } from "@/components/map-picker";
 import { DemoNotice, PageHeader } from "@/components/shell/page-header";
-import { Button, buttonClasses } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
@@ -23,42 +23,12 @@ const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 }; // New York City
 const QUICK_PICKS = ["plumber", "electrician", "dentist", "lawyer", "salon", "retail"];
 const SEARCH_NOTE = "Searching OpenStreetMap. A wide area or a broad category can take up to a minute.";
 
-// Two components so the demo never runs the live page's hooks (the old page
-// returned early before its hooks, which breaks React's hook order).
+// The demo runs the same search, capped to match the backend's demo limits
+// (demo_limits.py), and its results can't be saved or audited.
+const LIMITS = isDemoMode ? { radiusKm: 10, results: 25 } : { radiusKm: 50, results: 200 };
+const DEFAULT_LIMIT = isDemoMode ? 25 : 50;
+
 export default function DiscoverPage() {
-  return isDemoMode ? <DemoDiscover /> : <LiveDiscover />;
-}
-
-function DemoDiscover() {
-  return (
-    <div className="flex flex-col gap-6">
-      <DemoNotice>Searching for real businesses is turned off here, so the demo never calls a map or data provider.</DemoNotice>
-      <PageHeader title="Discover" description="Where new leads come from in the full version." />
-      <Card className="max-w-3xl p-5">
-        <h2 className="text-base font-semibold text-ink">Where leads come from</h2>
-        <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm leading-6 sm:grid-cols-[160px_minmax(0,1fr)]">
-          <dt className="font-medium text-ink">OpenStreetMap</dt>
-          <dd className="text-graphite">Search by city or draw a radius on the map, filtered by business category.</dd>
-          <dt className="font-medium text-ink">Geoapify</dt>
-          <dd className="text-graphite">A free-tier fallback when OpenStreetMap is slow or returns little.</dd>
-          <dt className="font-medium text-ink">CSV import</dt>
-          <dd className="text-graphite">Bring a list you already have from the Leads page.</dd>
-          <dt className="font-medium text-ink">Added by hand</dt>
-          <dd className="text-graphite">One business at a time, with only the details you can confirm.</dd>
-        </dl>
-        <p className="mt-4 text-[13px] leading-5 text-graphite">
-          No Google Maps scraping and no paid data APIs. Websites are crawled politely: robots.txt is respected, at most ten
-          pages, two levels deep.
-        </p>
-        <Link href="/prospects" className={buttonClasses("outline", "md", "mt-5")}>
-          Browse the sample leads
-        </Link>
-      </Card>
-    </div>
-  );
-}
-
-function LiveDiscover() {
   const [mode, setMode] = useState<Mode>("city");
   const [categories, setCategories] = useState<string[]>([]);
 
@@ -72,16 +42,22 @@ function LiveDiscover() {
 
   return (
     <div className="flex flex-col gap-6">
+      <DemoNotice>
+        Search here is live: results are real public listings from OpenStreetMap, shown up to {LIMITS.results} at a time. In the
+        demo they aren&apos;t saved or audited.
+      </DemoNotice>
       <PageHeader
         title="Discover"
         description="Search OpenStreetMap for local businesses. No Google Maps scraping and no paid APIs."
         meta={
-          <>
-            Have a list already?{" "}
-            <Link href="/prospects" className="focus-ring rounded-[2px] text-survey underline-offset-2 hover:underline">
-              Import a CSV from Leads
-            </Link>
-          </>
+          isDemoMode ? undefined : (
+            <>
+              Have a list already?{" "}
+              <Link href="/prospects" className="focus-ring rounded-[2px] text-survey underline-offset-2 hover:underline">
+                Import a CSV from Leads
+              </Link>
+            </>
+          )
         }
       />
 
@@ -204,7 +180,7 @@ function CitySearch({ categories }: { categories: string[] }) {
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
   const [radiusKm, setRadiusKm] = useState(5);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [cityCheck, setCityCheck] = useState<{ status: "idle" | "checking" | "valid" | "invalid"; label?: string }>({ status: "idle" });
   const [results, setResults] = useState<DiscoveredBusiness[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -275,11 +251,11 @@ function CitySearch({ categories }: { categories: string[] }) {
             </div>
             <div>
               <Label htmlFor="radius">Radius, km</Label>
-              <Input id="radius" type="number" min={1} max={50} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} />
+              <Input id="radius" type="number" min={1} max={LIMITS.radiusKm} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} />
             </div>
             <div>
               <Label htmlFor="limit">Max results</Label>
-              <Input id="limit" type="number" min={1} max={200} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
+              <Input id="limit" type="number" min={1} max={LIMITS.results} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
             </div>
             <Button type="submit" disabled={searching} className="sm:col-span-2 lg:col-span-1 lg:mt-[22px]">
               {searching ? "Searching…" : "Search"}
@@ -291,13 +267,7 @@ function CitySearch({ categories }: { categories: string[] }) {
       <SearchFeedback searching={searching} error={error} />
 
       {results && (
-        <ResultsTable
-          results={results}
-          saving={saver.saving}
-          auditing={saver.auditProgress}
-          onSave={(chosen) => void saver.save(chosen)}
-          onSaveAndAudit={(chosen) => void saver.saveAndAudit(chosen)}
-        />
+        <DiscoverResults results={results} saver={saver} />
       )}
     </div>
   );
@@ -307,7 +277,7 @@ function MapSearch({ categories }: { categories: string[] }) {
   const [category, setCategory] = useState("");
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [radiusKm, setRadiusKm] = useState(5);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [place, setPlace] = useState("");
   const [locating, setLocating] = useState(false);
   const [results, setResults] = useState<DiscoveredBusiness[] | null>(null);
@@ -366,7 +336,7 @@ function MapSearch({ categories }: { categories: string[] }) {
               id="map-radius"
               type="range"
               min={1}
-              max={50}
+              max={LIMITS.radiusKm}
               value={radiusKm}
               onChange={(e) => setRadiusKm(Number(e.target.value))}
               className="focus-ring w-full cursor-pointer accent-survey"
@@ -374,7 +344,7 @@ function MapSearch({ categories }: { categories: string[] }) {
           </div>
           <div className="max-w-[120px]">
             <Label htmlFor="map-limit">Max results</Label>
-            <Input id="map-limit" type="number" min={1} max={200} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
+            <Input id="map-limit" type="number" min={1} max={LIMITS.results} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
           </div>
           <Button onClick={() => void search()} disabled={searching}>
             {searching ? "Searching…" : "Search this area"}
@@ -393,14 +363,21 @@ function MapSearch({ categories }: { categories: string[] }) {
       <SearchFeedback searching={searching} error={error} />
 
       {results && (
-        <ResultsTable
-          results={results}
-          saving={saver.saving}
-          auditing={saver.auditProgress}
-          onSave={(chosen) => void saver.save(chosen)}
-          onSaveAndAudit={(chosen) => void saver.saveAndAudit(chosen)}
-        />
+        <DiscoverResults results={results} saver={saver} />
       )}
     </div>
+  );
+}
+
+function DiscoverResults({ results, saver }: { results: DiscoveredBusiness[]; saver: ReturnType<typeof useSaveResults> }) {
+  if (isDemoMode) return <ResultsTable results={results} />;
+  return (
+    <ResultsTable
+      results={results}
+      saving={saver.saving}
+      auditing={saver.auditProgress}
+      onSave={(chosen) => void saver.save(chosen)}
+      onSaveAndAudit={(chosen) => void saver.saveAndAudit(chosen)}
+    />
   );
 }

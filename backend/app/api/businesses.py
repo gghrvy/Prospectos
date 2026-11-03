@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
@@ -32,6 +32,16 @@ from app.services.discovery import (
     GeoapifyProvider,
     OpenStreetMapProvider,
     deduplicate_businesses,
+)
+from app.services.discovery.demo_limits import (
+    DEMO_MAX_RADIUS_KM,
+    DEMO_MAX_RESULTS,
+    GEOCODE_PER_VISITOR_LIMIT,
+    MAX_CATEGORY_LENGTH,
+    MAX_CATEGORY_TERMS,
+    MAX_PLACE_LENGTH,
+    PER_VISITOR_LIMIT,
+    demo_search_limiter,
 )
 from app.services.discovery.geoapify import GEOAPIFY_KNOWN_CATEGORIES
 from app.services.discovery.openstreetmap import KNOWN_CATEGORIES
@@ -196,13 +206,29 @@ def list_known_categories():
     return {"categories": sorted(set(KNOWN_CATEGORIES) | set(GEOAPIFY_KNOWN_CATEGORIES))}
 
 
+def _demo_visitor(request: Request) -> str:
+    # Render's proxy appends the address it saw, so the last entry is the one
+    # a visitor can't forge; earlier entries come from the request itself.
+    forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
+    return forwarded[-1] if forwarded else (request.client.host if request.client else "unknown")
+
+
+def _check_demo_search_limit(key: str, limit: int = PER_VISITOR_LIMIT) -> None:
+    if not demo_search_limiter.allow(key, limit):
+        raise HTTPException(429, "The demo's search limit was reached. Try again in a minute.")
+
+
 @router.post("/search/geocode", response_model=GeocodeResult)
-def geocode_place(payload: GeocodeRequest):
+def geocode_place(payload: GeocodeRequest, request: Request):
     """Resolves a typed place name to coordinates — used to validate a city
     before running the full search, and to recenter the map-search mode.
     Falls back to Geoapify's geocoder (if configured) on the same principle
     as the business search itself: independent infrastructure, not just a
     retry of the same service."""
+    if get_settings().is_demo_mode:
+        if len(payload.place) > MAX_PLACE_LENGTH:
+            raise HTTPException(422, f"Place names are limited to {MAX_PLACE_LENGTH} characters in the demo.")
+        _check_demo_search_limit(f"geocode:{_demo_visitor(request)}", GEOCODE_PER_VISITOR_LIMIT)
     try:
         return OpenStreetMapProvider().geocode(payload.place)
     except ValueError as osm_error:
@@ -216,7 +242,9 @@ def geocode_place(payload: GeocodeRequest):
 
 
 @router.post("/search")
-def search_businesses(payload: OSMSearchRequest, db: Session = Depends(get_db)):
+def search_businesses(payload: OSMSearchRequest, request: Request, db: Session = Depends(get_db)):
+    if get_settings().is_demo_mode:
+        return _demo_search(payload, request)
     search_kwargs = dict(
         category=payload.category,
         city=payload.city,
@@ -252,6 +280,47 @@ def search_businesses(payload: OSMSearchRequest, db: Session = Depends(get_db)):
         return unique
 
     return _persist_candidates(db, unique)
+
+
+def _demo_search(payload: OSMSearchRequest, request: Request) -> list:
+    """The public demo's live search: OpenStreetMap (Geoapify if a key is
+    set), capped in size, rate-limited, and never saved or compared against
+    the database."""
+    if payload.save:
+        raise HTTPException(403, demo_data.DEMO_READ_ONLY)
+    category = payload.category or ""
+    if len(category) > MAX_CATEGORY_LENGTH or len([t for t in category.split(",") if t.strip()]) > MAX_CATEGORY_TERMS:
+        raise HTTPException(
+            422, f"Demo searches take up to {MAX_CATEGORY_TERMS} categories and {MAX_CATEGORY_LENGTH} characters."
+        )
+    search_kwargs = dict(
+        category=payload.category,
+        city=payload.city,
+        country=payload.country,
+        radius_km=max(0.5, min(payload.radius_km, DEMO_MAX_RADIUS_KM)),
+        limit=max(1, min(payload.limit, DEMO_MAX_RESULTS)),
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+    )
+    cache_key = demo_search_limiter.cache.make_key(provider="openstreetmap-demo", **{**search_kwargs, "category": payload.category or ""})
+    cached = demo_search_limiter.cache.get(cache_key)
+    if cached is not None:
+        return cached
+    _check_demo_search_limit(_demo_visitor(request))
+    try:
+        candidates = OpenStreetMapProvider().discover(**search_kwargs)
+    except ValueError as osm_error:
+        # Same fallback as the live search, when a free-tier key is set.
+        settings = get_settings()
+        if not settings.geoapify_api_key:
+            raise HTTPException(400, str(osm_error)) from osm_error
+        try:
+            candidates = GeoapifyProvider(api_key=settings.geoapify_api_key).discover(**search_kwargs)
+        except ValueError as geoapify_error:
+            raise HTTPException(400, str(geoapify_error)) from geoapify_error
+    results = deduplicate_businesses([], candidates)
+    demo_search_limiter.remember(cache_key, results)
+    return results
 
 
 def _resolve_sender_snapshot(db: Session, sender_id: str | None) -> dict:

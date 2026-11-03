@@ -234,7 +234,12 @@ class OpenStreetMapProvider(BusinessDiscoveryProvider):
                 key, value = known
                 clauses.append(f'nwr(around:{radius_m},{lat},{lon})["name"]["{key}"="{value}"];')
             else:
-                escaped = re.escape(term)
+                # Letters, digits, spaces, hyphens and apostrophes only: the
+                # term sits inside a quoted Overpass string, so a quote or
+                # bracket must never reach it.
+                escaped = re.sub(r"[^\w\s'-]", "", term).strip()
+                if not escaped:
+                    continue
                 clauses.extend(
                     f'nwr(around:{radius_m},{lat},{lon})["name"]["{key}"~"{escaped}",i];'
                     for key in ("shop", "amenity", "office", "craft")

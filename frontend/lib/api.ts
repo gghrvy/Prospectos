@@ -74,7 +74,9 @@ async function send<T>(path: string, options: RequestInit): Promise<T> {
     let message = response.statusText;
     try {
       const data = await response.json();
-      message = data.detail ? JSON.stringify(data.detail) : JSON.stringify(data);
+      // A plain-text detail is shown as written; structured ones (validation
+      // errors) stay JSON so nothing is lost.
+      message = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? data);
     } catch {
       // response body wasn't JSON — fall back to statusText
     }

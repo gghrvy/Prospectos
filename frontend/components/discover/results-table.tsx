@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/select";
 import { DURATION, exit } from "@/lib/motion";
 import type { DiscoveredBusiness } from "@/lib/types";
-import { cn, hostOf } from "@/lib/utils";
+import { cn, hostOf, safeHttpUrl } from "@/lib/utils";
 
 const CHAIN = /\b(inc\.?|llc|ltd\.?|corp\.?|co\.?|franchise|[0-9]+ locations?)\b/i;
 
@@ -18,17 +18,20 @@ type Presence = "any" | "has" | "none";
 
 export function ResultsTable({
   results,
-  saving,
-  auditing,
+  saving = false,
+  auditing = null,
   onSave,
   onSaveAndAudit,
 }: {
   results: DiscoveredBusiness[];
-  saving: boolean;
-  auditing: { done: number; total: number } | null;
-  onSave: (chosen: DiscoveredBusiness[]) => void;
-  onSaveAndAudit: (chosen: DiscoveredBusiness[]) => void;
+  // Leave the save props out for a read-only table (the public demo):
+  // no selection, no Save buttons.
+  saving?: boolean;
+  auditing?: { done: number; total: number } | null;
+  onSave?: (chosen: DiscoveredBusiness[]) => void;
+  onSaveAndAudit?: (chosen: DiscoveredBusiness[]) => void;
 }) {
+  const canSave = onSave !== undefined && onSaveAndAudit !== undefined;
   // Keyed by index into `results`; cleared when a new search replaces them.
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [minimumFit, setMinimumFit] = useState(0);
@@ -89,7 +92,7 @@ export function ResultsTable({
             <p className="text-[13px] text-graphite">{visibleIndexes.length} match your filters</p>
           )}
         </div>
-        {results.length > 0 && (
+        {canSave && results.length > 0 && (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => onSave(results)}>
             {saving ? "Saving…" : `Save all ${results.length} as leads`}
           </Button>
@@ -151,16 +154,18 @@ export function ResultsTable({
               <table className="text-sm">
                 <thead>
                   <tr>
-                    <th className="w-10 !pr-0">
-                      <Checkbox
-                        aria-label="Select every result shown"
-                        checked={allSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = selectedVisible > 0 && !allSelected;
-                        }}
-                        onChange={toggleAll}
-                      />
-                    </th>
+                    {canSave && (
+                      <th className="w-10 !pr-0">
+                        <Checkbox
+                          aria-label="Select every result shown"
+                          checked={allSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = selectedVisible > 0 && !allSelected;
+                          }}
+                          onChange={toggleAll}
+                        />
+                      </th>
+                    )}
                     <th className="w-[38%]">Business</th>
                     <th>Fit</th>
                     <th className="hidden md:table-cell">Phone</th>
@@ -170,11 +175,15 @@ export function ResultsTable({
                 <tbody>
                   {visibleIndexes.map((index) => {
                     const r = results[index];
+                    const website = safeHttpUrl(r.website);
+                    const social = safeHttpUrl(r.social_url);
                     return (
                       <tr key={index} className={selected.has(index) ? "bg-survey/[0.05]" : undefined}>
-                        <td className="!pr-0">
-                          <Checkbox aria-label={`Select ${r.name}`} checked={selected.has(index)} onChange={() => toggle(index)} />
-                        </td>
+                        {canSave && (
+                          <td className="!pr-0">
+                            <Checkbox aria-label={`Select ${r.name}`} checked={selected.has(index)} onChange={() => toggle(index)} />
+                          </td>
+                        )}
                         <td className="py-2 sm:min-w-[180px]">
                           <span className="block font-medium text-ink">{r.name}</span>
                           <span className="block text-xs text-graphite">{r.address ?? r.category ?? "No address listed"}</span>
@@ -189,13 +198,13 @@ export function ResultsTable({
                         </td>
                         <td className="hidden whitespace-nowrap text-graphite md:table-cell">{r.phone ?? "None listed"}</td>
                         <td className="hidden sm:table-cell">
-                          {r.website ? (
-                            <a href={r.website} target="_blank" rel="noreferrer" className="focus-ring rounded-[2px] text-survey hover:underline">
-                              {hostOf(r.website)}
+                          {website ? (
+                            <a href={website} target="_blank" rel="noreferrer" className="focus-ring rounded-[2px] text-survey hover:underline">
+                              {hostOf(website)}
                             </a>
-                          ) : r.social_url ? (
-                            <a href={r.social_url} target="_blank" rel="noreferrer" className="focus-ring rounded-[2px] text-survey hover:underline">
-                              {r.social_url.includes("instagram.com") ? "Instagram" : "Facebook"}
+                          ) : social ? (
+                            <a href={social} target="_blank" rel="noreferrer" className="focus-ring rounded-[2px] text-survey hover:underline">
+                              {social.includes("instagram.com") ? "Instagram" : "Facebook"}
                             </a>
                           ) : (
                             <span className="text-graphite">None found</span>
@@ -212,7 +221,7 @@ export function ResultsTable({
       )}
 
       <AnimatePresence>
-        {(selected.size > 0 || auditing) && (
+        {canSave && (selected.size > 0 || auditing) && (
           <motion.div
             key="selection-bar"
             initial={{ opacity: 0, y: 8 }}

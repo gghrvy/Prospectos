@@ -9,6 +9,8 @@ scorecards, evidence, recommendations, and outreach views.
 from copy import deepcopy
 from datetime import datetime, timezone
 
+DEMO_READ_ONLY = "Demo Mode is read-only. Prepared sample data is available, but live operations are disabled."
+
 
 DEMO_TIMESTAMP = datetime(2026, 9, 15, 14, 30, tzinfo=timezone.utc)
 

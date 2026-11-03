@@ -26,9 +26,10 @@ app = FastAPI(
 async def enforce_demo_mode(request: Request, call_next):
     """Make the API—not the browser—the final public-demo safety boundary.
 
-    Only the prepared catalogue and replaying an existing prepared audit are
-    available.  In particular, OAuth, Gmail, discovery, URL crawling, CSV
-    export/import, SQL mutations, and AI-backed writes are not reachable.
+    Only the prepared catalogue, replaying an existing prepared audit, and a
+    rate-limited discovery search that never saves are available.  In
+    particular, OAuth, Gmail, URL crawling, CSV export/import, SQL mutations,
+    and AI-backed writes are not reachable.
     """
     if not get_settings().is_demo_mode:
         return await call_next(request)
@@ -40,18 +41,21 @@ async def enforce_demo_mode(request: Request, call_next):
         and len(path.split("/")) == 4
         and demo_data.is_demo_business(path.rsplit("/", 1)[-1])
     )
-    safe_get = path in {"/health", "/api/businesses", "/api/gmail/status"} or business_detail_read or path.startswith("/docs") or path.startswith("/openapi")
+    safe_get = path in {"/health", "/api/businesses", "/api/businesses/search/categories", "/api/gmail/status"} or business_detail_read or path.startswith("/docs") or path.startswith("/openapi")
     safe_demo_audit = (
         method == "POST"
         and path.startswith("/api/businesses/")
         and path.endswith("/audit")
         and demo_data.is_demo_business(path.split("/")[-2])
     )
-    if (method in {"GET", "HEAD", "OPTIONS"} and safe_get) or safe_demo_audit:
+    # Discovery search is the demo's one live integration. The route itself
+    # refuses to save in demo mode and applies the demo_limits guards.
+    safe_demo_search = method == "POST" and path in {"/api/businesses/search", "/api/businesses/search/geocode"}
+    if (method in {"GET", "HEAD", "OPTIONS"} and safe_get) or safe_demo_audit or safe_demo_search:
         return await call_next(request)
     return JSONResponse(
         status_code=403,
-        content={"detail": "Demo Mode is read-only. Prepared sample data is available, but live operations are disabled."},
+        content={"detail": demo_data.DEMO_READ_ONLY},
     )
 
 
