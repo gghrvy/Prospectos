@@ -33,7 +33,35 @@ export class ApiError extends Error {
   }
 }
 
+// How many requests are still waiting. The public demo runs on a free server
+// that sleeps when idle, so the demo notice watches this to explain a slow
+// first load instead of leaving skeletons up with no reason given.
+let pendingRequests = 0;
+const pendingListeners = new Set<(count: number) => void>();
+
+export function subscribePendingRequests(listener: (count: number) => void): () => void {
+  pendingListeners.add(listener);
+  listener(pendingRequests);
+  return () => {
+    pendingListeners.delete(listener);
+  };
+}
+
+function trackPending(delta: number) {
+  pendingRequests += delta;
+  pendingListeners.forEach((listener) => listener(pendingRequests));
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  trackPending(1);
+  try {
+    return await send<T>(path, options);
+  } finally {
+    trackPending(-1);
+  }
+}
+
+async function send<T>(path: string, options: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers:

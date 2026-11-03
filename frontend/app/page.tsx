@@ -263,7 +263,10 @@ function DemoLanding() {
 
   return (
     <div className="flex flex-col gap-10">
-      <DemoNotice>Every business here is fictional sample data. Nothing you do sends email or touches a real website.</DemoNotice>
+      <DemoNotice>
+        This is a working internal tool, shown here with fictional sample businesses. Nothing you do sends email or
+        touches a real website.
+      </DemoNotice>
 
       <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-14">
         <section className="max-w-xl pt-2">
@@ -287,7 +290,62 @@ function DemoLanding() {
 
         <SampleLead sample={sample} />
       </div>
+
+      <DemoSteps sample={sample} />
     </div>
+  );
+}
+
+// The demo's best path, in order. Links point at the highest-scoring sample
+// once it has loaded, and at the leads list until then.
+function DemoSteps({ sample }: { sample: BusinessListItem | null | undefined }) {
+  const lead = sample ? `/prospects/${sample.id}` : "/prospects";
+  const steps = [
+    {
+      title: "Open a sample lead",
+      body: "See the business's details, its opportunity score and the recommended approach.",
+      href: lead,
+      link: sample ? `Open ${sample.name}` : "Browse sample leads",
+    },
+    {
+      title: "Replay its audit",
+      body: "Press Replay audit on the lead's page. The score counts up and every finding behind it is listed.",
+    },
+    {
+      title: "Read the drafted outreach",
+      body: "The email is written from the audit's findings. In the real tool it waits here until a person approves it.",
+      href: sample ? `${lead}?tab=outreach` : "/outreach",
+      link: "Read the draft",
+    },
+  ];
+
+  return (
+    <section aria-labelledby="demo-steps-heading" className="border-t border-rule pt-8">
+      <h2 id="demo-steps-heading" className="text-base font-semibold text-ink">
+        Try it in three steps
+      </h2>
+      <ol className="mt-5 grid gap-6 sm:grid-cols-3">
+        {steps.map((step, i) => (
+          <li key={step.title} className="flex gap-3">
+            <span
+              aria-hidden="true"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-survey/40 font-serif text-[13px] tabular-nums text-survey"
+            >
+              {i + 1}
+            </span>
+            <div className="flex flex-col gap-1.5">
+              <h3 className="text-sm font-medium text-ink">{step.title}</h3>
+              <p className="max-w-prose text-[13px] leading-5 text-graphite">{step.body}</p>
+              {step.href && (
+                <Link href={step.href} className="focus-ring w-fit rounded-tag text-[13px] font-medium text-survey hover:underline">
+                  {step.link}
+                </Link>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

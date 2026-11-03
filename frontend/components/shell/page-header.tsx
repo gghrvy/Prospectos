@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { WakingLine } from "@/components/shell/waking-line";
 import { isDemoMode } from "@/lib/runtime";
 
 export function PageHeader({
@@ -31,9 +32,12 @@ export function DemoNotice({ children }: { children: ReactNode }) {
   return (
     <aside className="flex gap-3 rounded-panel border border-survey/25 bg-survey/[0.06] px-4 py-3 text-[13px] leading-5 text-ink">
       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-survey" aria-hidden="true" />
-      <p>
-        <span className="font-medium">Public demo.</span> {children}
-      </p>
+      <div>
+        <p>
+          <span className="font-medium">Public demo.</span> {children}
+        </p>
+        <WakingLine />
+      </div>
     </aside>
   );
 }
