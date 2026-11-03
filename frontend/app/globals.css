@@ -2,27 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
-/* A restrained operational workspace: dense, readable, and intentional. */
+/* "Assay Report" tokens. Values are RGB triplets so Tailwind can apply alpha.
+   Canonical table: frontend/MASTER.md. */
 @layer base {
-  :root { --ink: 222 24% 7%; --panel: 222 21% 10%; --panel-raised: 222 18% 13%; --line: 220 15% 19%; --fog: 218 12% 58%; --paper: 210 20% 94%; --signal: 40 94% 57%; --background: var(--ink); --foreground: var(--paper); --card: var(--panel); --muted: 220 15% 17%; --muted-foreground: var(--fog); --border: var(--line); --primary: var(--signal); }
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground antialiased; color-scheme: dark; font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif; }
-  ::selection { background: hsl(var(--signal) / .28); }
+  :root {
+    --paper: 243 242 238;
+    --sheet: 251 250 248;
+    --ink: 28 31 29;
+    --graphite: 94 98 93;
+    --rule: 217 215 208;
+    --survey: 30 90 67;
+    --ochre: 138 90 11;
+    --brick: 162 59 42;
+    --ease-assay: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  * { @apply border-rule; }
+  html { color-scheme: light; }
+  body { @apply bg-paper font-sans text-sm text-ink antialiased; }
+  ::selection { background: rgb(var(--survey) / 0.18); }
   button, input, select, textarea { font: inherit; }
-  select { color-scheme: dark; background-color: hsl(var(--panel-raised)); color: hsl(var(--paper)); border: 1px solid hsl(var(--line)); border-radius: .375rem; padding: .35rem 1.75rem .35rem .55rem; }
-  select option { background-color: hsl(var(--panel-raised)); color: hsl(var(--paper)); }
+  select { @apply rounded-control border border-rule bg-sheet text-ink; padding: 0.4rem 1.75rem 0.4rem 0.6rem; }
+  a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; }
 }
-.leaflet-bar, .leaflet-bar a, .leaflet-control-attribution { background: hsl(var(--panel)) !important; border-color: hsl(var(--border)) !important; color: hsl(var(--paper)) !important; }
-.leaflet-bar a:hover { background: hsl(var(--panel-raised)) !important; }
-.leaflet-control-attribution a { color: hsl(var(--signal)) !important; }
+
 @layer utilities {
-  .font-display { font-family: var(--font-mono), ui-monospace, monospace; }
-  .page-kicker { @apply font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground; }
-  .section-heading { @apply text-base font-semibold tracking-tight text-foreground; }
-  .data-table { @apply overflow-x-auto rounded-lg border border-border bg-panel; }
-  .data-table table { @apply min-w-[720px]; }
-  .data-table thead { @apply sticky top-0 z-[1] bg-panel-raised/95 backdrop-blur; }
-  .data-table th { @apply px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wider text-muted-foreground; }
-  .data-table td { @apply px-4 py-3; }
-  .data-table tbody tr { @apply border-t border-border/80 transition-colors hover:bg-white/[0.025]; }
+  .focus-ring { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-survey focus-visible:ring-offset-2 focus-visible:ring-offset-paper; }
+  .data-table { @apply overflow-x-auto rounded-panel border border-rule bg-sheet; }
+  .data-table table { @apply w-full; }
+  .data-table thead { @apply sticky top-0 z-[1] bg-sheet; }
+  .data-table th { @apply h-10 border-b border-rule px-4 text-left text-xs font-medium text-graphite; }
+  .data-table td { @apply h-10 px-4 align-middle; }
+  .data-table tbody tr { @apply border-t border-rule/70 transition-colors duration-fast ease-assay hover:bg-survey/[0.04]; }
+  .data-table tbody tr:first-child { @apply border-t-0; }
 }
+
+/* Check mark for components/ui/checkbox.tsx, masked so it takes the sheet color. */
+.assay-checkbox::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(var(--sheet));
+  opacity: 0;
+  pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% no-repeat;
+}
+.assay-checkbox:checked::after { opacity: 1; }
+
+/* Leaflet controls in the Assay palette. */
+.leaflet-bar, .leaflet-bar a, .leaflet-control-attribution { background: rgb(var(--sheet)) !important; border-color: rgb(var(--rule)) !important; color: rgb(var(--ink)) !important; }
+.leaflet-bar a:hover { background: rgb(var(--paper)) !important; }
+.leaflet-control-attribution a { color: rgb(var(--survey)) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Native <dialog> enter/exit (components/ui/dialog.tsx). The component keeps
+   the dialog open for the exit duration while data-closing is set. Exits run
+   at 70% of the entrance and ease in, per lib/motion.ts. */
+@keyframes assay-dialog-in { from { opacity: 0; transform: scale(0.98); } }
+@keyframes assay-dialog-out { to { opacity: 0; transform: scale(0.98); } }
+@keyframes assay-drawer-in { from { transform: translateX(-100%); } }
+@keyframes assay-drawer-out { to { transform: translateX(-100%); } }
+@keyframes assay-fade-in { from { opacity: 0; } }
+@keyframes assay-fade-out { to { opacity: 0; } }
+.assay-dialog[open] { animation: assay-dialog-in 180ms var(--ease-assay); }
+.assay-drawer[open] { animation: assay-drawer-in 240ms var(--ease-assay); }
+.assay-dialog[open]::backdrop, .assay-drawer[open]::backdrop { animation: assay-fade-in 180ms var(--ease-assay); }
+.assay-dialog[data-closing] { animation: assay-dialog-out 126ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+.assay-drawer[data-closing] { animation: assay-drawer-out 168ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+.assay-dialog[data-closing]::backdrop, .assay-drawer[data-closing]::backdrop { animation: assay-fade-out 126ms cubic-bezier(0.4, 0, 1, 1) forwards; }

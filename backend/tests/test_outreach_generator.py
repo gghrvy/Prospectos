@@ -1,4 +1,7 @@
+import httpx
+
 from app.services.ai.base import AIProvider
+from app.services.ai.ollama_provider import OllamaProvider
 from app.services.ai.template_provider import TemplateProvider
 from app.services.outreach.generator import generate_outreach_draft, has_internal_audit_language, pick_angle, pick_primary_angle
 
@@ -13,6 +16,51 @@ class FakeProvider(AIProvider):
     def generate_outreach(self, business_name, category, angle, observations, sender=None, social_proof=None):
         self.calls.append((business_name, category, angle, observations))
         return f"Subject for {business_name}", f"Body about {angle}"
+
+
+def test_generate_outreach_draft_falls_back_to_template_when_ollama_generation_fails():
+    # Ollama answers the probe but the model isn't pulled: /api/generate is a 404.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": []})
+        return httpx.Response(404, json={"error": "model 'llama3.1' not found"})
+
+    provider = OllamaProvider(
+        base_url="http://localhost:11434", model="llama3.1", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    draft = generate_outreach_draft(
+        business_name="ABC Plumbing",
+        category="Plumber",
+        opportunity_types=["AI_CHATBOT"],
+        opportunity_reasons=["No chatbot found."],
+        provider=provider,
+        generated_by="ollama",
+    )
+
+    assert draft["generated_by"] == "template"
+    assert draft["subject"]
+    assert "ABC Plumbing" in draft["body"]
+
+
+def test_generate_outreach_draft_falls_back_to_template_when_ollama_returns_non_json():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>proxy error</html>")
+
+    provider = OllamaProvider(
+        base_url="http://localhost:11434", model="llama3.1", http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    draft = generate_outreach_draft(
+        business_name="ABC Plumbing",
+        category="Plumber",
+        opportunity_types=["AI_CHATBOT"],
+        opportunity_reasons=["No chatbot found."],
+        provider=provider,
+        generated_by="ollama",
+    )
+
+    assert draft["generated_by"] == "template"
 
 
 def test_pick_angle_prefers_first_matching_opportunity_type():

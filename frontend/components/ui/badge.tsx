@@ -1,12 +1,13 @@
 import type { HTMLAttributes } from "react";
 
+import { stageLabel, stageTone } from "@/lib/stages";
 import { cn } from "@/lib/utils";
 
 export function Badge({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-sm border px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider",
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-tag border border-rule bg-sheet px-1.5 py-0.5 text-xs font-medium text-ink",
         className
       )}
       {...props}
@@ -14,39 +15,31 @@ export function Badge({ className, ...props }: HTMLAttributes<HTMLSpanElement>) 
   );
 }
 
-// Score/category color coding used across the dashboard, prospects table,
-// and prospect detail page — one stoplight scale, defined once, so a color
-// always means the same real thing everywhere it appears.
-const QUALITY_COLORS: Record<string, string> = {
-  EXCELLENT: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  GOOD: "bg-emerald-500/10 text-emerald-400/90 border-emerald-500/20",
-  AVERAGE: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  WEAK: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  POOR: "bg-red-500/15 text-red-400 border-red-500/30",
-  CRITICAL: "bg-red-600/20 text-red-400 border-red-600/40",
+function Empty() {
+  return <span className="text-graphite">–</span>;
+}
+
+// Quality grades the website, not the lead: a weak site is a warning about the
+// site (and usually a good opportunity), so only weak grades get color.
+const QUALITY_TONE: Record<string, string> = {
+  AVERAGE: "border-ochre/30 bg-ochre/[0.07] text-ochre",
+  WEAK: "border-ochre/30 bg-ochre/[0.07] text-ochre",
+  POOR: "border-brick/30 bg-brick/[0.07] text-brick",
+  CRITICAL: "border-brick/40 bg-brick/[0.1] text-brick",
 };
 
 export function QualityBadge({ category }: { category: string | null | undefined }) {
-  if (!category) return <span className="font-mono text-xs text-muted-foreground">—</span>;
-  return <Badge className={QUALITY_COLORS[category] ?? ""}>{category}</Badge>;
+  if (!category) return <Empty />;
+  const label = category.charAt(0) + category.slice(1).toLowerCase();
+  return <Badge className={QUALITY_TONE[category]}>{label}</Badge>;
 }
 
-// The signature element: a 10-tick signal meter standing in for every
-// numeric score in the app (opportunity scores, quality score, sub-scores).
-// ProspectOS's whole job is turning a crawl into a legible signal — a bare
-// number or a colored pill says less at a glance than a filled meter does,
-// and it reads consistently whether it's 4px tall in a table cell or large
-// on the detail page.
+// Every opportunity score in the app renders as this 10-tick meter: survey
+// green only, so more ink always means more opportunity.
 const TICK_COUNT = 10;
 
-function meterColor(score: number): string {
-  if (score >= 70) return "text-emerald-400";
-  if (score >= 40) return "text-amber-400";
-  return "text-red-400";
-}
-
-function meterLabel(score: number): string {
-  if (score >= 70) return "High";
+export function scoreWord(score: number): string {
+  if (score >= 70) return "Strong";
   if (score >= 40) return "Moderate";
   return "Low";
 }
@@ -54,56 +47,63 @@ function meterLabel(score: number): string {
 export function SignalMeter({
   score,
   size = "sm",
+  showWord = true,
+  showNumber = true,
+  revealKey,
 }: {
   score: number | null | undefined;
   size?: "sm" | "lg";
+  showWord?: boolean;
+  showNumber?: boolean;
+  // A new value refills the ticks left to right, 40ms apart. Set only after
+  // a user-run audit (see ScoreGrade); never on page load.
+  revealKey?: number;
 }) {
-  if (score === null || score === undefined) {
-    return <span className="font-mono text-xs text-muted-foreground">—</span>;
-  }
-  const filled = Math.round((Math.max(0, Math.min(100, score)) / 100) * TICK_COUNT);
-  const color = meterColor(score);
-  const tickClass = size === "lg" ? "h-3 w-1.5" : "h-2.5 w-1";
+  if (score === null || score === undefined) return <Empty />;
+  const clamped = Math.max(0, Math.min(100, score));
+  const filled = Math.round((clamped / 100) * TICK_COUNT);
+  const tick = size === "lg" ? "h-3.5 w-[5px]" : "h-3 w-1";
 
   return (
-    <span className="inline-flex items-center gap-2 font-mono">
+    <span className="inline-flex items-center gap-2" aria-label={`Opportunity ${score} of 100, ${scoreWord(score).toLowerCase()}`}>
       <span className="inline-flex items-end gap-[2px]" aria-hidden="true">
-        {Array.from({ length: TICK_COUNT }).map((_, i) => (
-          <span
-            key={i}
-            className={cn(
-              "rounded-[1px] transition-colors",
-              tickClass,
-              i < filled ? color.replace("text-", "bg-") : "bg-border"
-            )}
-          />
-        ))}
+        {Array.from({ length: TICK_COUNT }).map((_, i) =>
+          revealKey ? (
+            <span key={i} className={cn("relative overflow-hidden rounded-[1px] bg-rule", tick)}>
+              {i < filled && (
+                <span
+                  key={revealKey}
+                  className="absolute inset-0 origin-bottom animate-assay-tick bg-survey"
+                  style={{ animationDelay: `${i * 40}ms` }}
+                />
+              )}
+            </span>
+          ) : (
+            <span key={i} className={cn("rounded-[1px]", tick, i < filled ? "bg-survey" : "bg-rule")} />
+          )
+        )}
       </span>
-      <span className="flex items-baseline gap-1.5"><span className={cn("tabular-nums", color, size === "lg" ? "text-lg font-semibold" : "text-sm font-medium")}>{score}</span><span className="hidden font-mono text-[9px] uppercase tracking-wider text-muted-foreground sm:inline">{meterLabel(score)}</span></span>
+      {showNumber && <span className="font-medium tabular-nums text-ink" aria-hidden="true">{score}</span>}
+      {showWord && <span className="hidden text-xs text-graphite sm:inline" aria-hidden="true">{scoreWord(score)}</span>}
     </span>
   );
 }
 
-// Kept as an alias so existing call sites (`<OpportunityScoreBadge score={…} />`)
-// don't need touching one-by-one — same component, meter-based rendering.
+// Kept so existing call sites (`<OpportunityScoreBadge score={…} />`) keep working.
 export const OpportunityScoreBadge = SignalMeter;
 
-const STATUS_COLORS: Record<string, string> = {
-  NEW: "bg-slate-500/15 text-slate-300 border-slate-500/30",
-  AUDITED: "bg-sky-500/15 text-sky-400 border-sky-500/30",
-  QUALIFIED: "bg-emerald-500/10 text-emerald-400/90 border-emerald-500/20",
-  CONTACTED: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
-  FOLLOW_UP: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
-  REPLIED: "bg-purple-500/15 text-purple-400 border-purple-500/30",
-  DEMO_SENT: "bg-purple-500/15 text-purple-400 border-purple-500/30",
-  CALL_BOOKED: "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/30",
-  PROPOSAL: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  WON: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  LOST: "bg-red-500/15 text-red-400 border-red-500/30",
-  NOT_INTERESTED: "bg-red-500/15 text-red-400 border-red-500/30",
-};
+const DOT_TONE = {
+  won: "bg-survey",
+  closed: "bg-graphite/60",
+  open: "border border-ink/60 bg-transparent",
+} as const;
 
 export function StatusBadge({ status }: { status: string | null | undefined }) {
-  if (!status) return <Badge className="bg-slate-500/15 text-slate-300 border-slate-500/30">NEW</Badge>;
-  return <Badge className={STATUS_COLORS[status] ?? ""}>{status.replace(/_/g, " ")}</Badge>;
+  const tone = stageTone(status ?? null);
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-[13px]", tone === "closed" ? "text-graphite" : "text-ink", tone === "won" && "font-medium text-survey")}>
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", DOT_TONE[tone])} aria-hidden="true" />
+      {stageLabel(status ?? null)}
+    </span>
+  );
 }

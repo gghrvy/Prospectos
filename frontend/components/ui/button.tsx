@@ -6,16 +6,24 @@ type Variant = "default" | "outline" | "ghost" | "destructive";
 type Size = "sm" | "md";
 
 const variantClasses: Record<Variant, string> = {
-  default: "bg-signal text-slate-950 hover:bg-signal/90",
-  outline: "border border-border bg-transparent hover:bg-white/5 hover:border-signal/40",
-  ghost: "bg-transparent hover:bg-white/5",
-  destructive: "bg-red-600 text-white hover:bg-red-500",
+  default: "bg-survey text-sheet hover:bg-survey/90 active:bg-survey/80",
+  outline: "border border-rule bg-sheet text-ink hover:border-graphite/40 hover:bg-paper active:bg-rule/40",
+  ghost: "bg-transparent text-ink hover:bg-ink/[0.05] active:bg-ink/[0.08]",
+  destructive: "bg-brick text-sheet hover:bg-brick/90 active:bg-brick/80",
 };
 
 const sizeClasses: Record<Size, string> = {
-  sm: "h-8 px-3 text-xs",
+  sm: "h-8 px-3 text-[13px]",
   md: "h-9 px-4 text-sm",
 };
+
+const baseClasses =
+  "focus-ring inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control font-medium transition-colors duration-fast ease-assay disabled:cursor-not-allowed disabled:opacity-45";
+
+// For links that should look like buttons, so an <a> never wraps a <button>.
+export function buttonClasses(variant: Variant = "default", size: Size = "md", className?: string) {
+  return cn(baseClasses, variantClasses[variant], sizeClasses[size], className);
+}
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -23,16 +31,12 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "default", size = "md", ...props }, ref) => {
+  ({ className, variant = "default", size = "md", type = "button", ...props }, ref) => {
     return (
       <button
         ref={ref}
-        className={cn(
-          "inline-flex items-center justify-center gap-2 rounded-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal disabled:pointer-events-none disabled:opacity-50",
-          variantClasses[variant],
-          sizeClasses[size],
-          className
-        )}
+        type={type}
+        className={buttonClasses(variant, size, className)}
         {...props}
       />
     );

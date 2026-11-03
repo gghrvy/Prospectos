@@ -1,283 +1,341 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ScoreGrade } from "@/components/lead/score-grade";
+import { StageTrack } from "@/components/lead/stage-track";
+import { PhaseSummary } from "@/components/pipeline/phase-summary";
+import { ActivityFeed, type GmailActivity } from "@/components/outreach/activity-feed";
+import { DemoNotice, PageHeader } from "@/components/shell/page-header";
 import { OpportunityScoreBadge, QualityBadge, StatusBadge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, PrimaryCard } from "@/components/ui/card";
+import { buttonClasses } from "@/components/ui/button";
+import { Card, PrimaryCard } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { RadialGauge } from "@/components/ui/gauge";
-import { api, ApiError } from "@/lib/api";
+import { LoadingRegion, Skeleton, SkeletonRows } from "@/components/ui/skeleton";
+import { api, API_BASE_URL, ApiError } from "@/lib/api";
+import { fetchAllBusinesses } from "@/lib/fetch-all";
 import { isDemoMode } from "@/lib/runtime";
 import type { BusinessListItem } from "@/lib/types";
 
+type ApprovalItem = Awaited<ReturnType<typeof api.outreachApprovalQueue>>["items"][number];
+type GmailReport = Awaited<ReturnType<typeof api.gmailReport>>;
+
 export default function DashboardPage() {
+  return isDemoMode ? <DemoLanding /> : <LiveDashboard />;
+}
+
+function apiProblem(err: unknown): string {
+  // Name the server only when it was configured, or when it's the dev default.
+  const where =
+    process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NODE_ENV === "development" ? ` at ${API_BASE_URL}` : "";
+  if (err instanceof ApiError) return `The API${where} answered with an error (${err.status}): ${err.message}`;
+  return `The API${where} isn't responding. Start the backend, then try again.`;
+}
+
+function LiveDashboard() {
   const [businesses, setBusinesses] = useState<BusinessListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [gmailActivity, setGmailActivity] = useState<{ sent_today: number; daily_limit: number; items: { id: string; outreach_id: string | null; business_id: string | null; action: string; detail: string | null; created_at: string }[] } | null>(null);
-  const [approvalQueue, setApprovalQueue] = useState<{ outreach_id: string; business_id: string; business_name: string; email: string; subject: string | null; approval_status: string; created_at: string }[]>([]);
-  const [batches, setBatches] = useState<{ id: string; name: string; status: string; created_at: string; count: number; timezone: string }[]>([]);
-  const [selectedDrafts, setSelectedDrafts] = useState<Set<string>>(new Set());
-  const [batchName, setBatchName] = useState("");
-  const [batchBusy, setBatchBusy] = useState(false);
-  const [batchError, setBatchError] = useState<string | null>(null);
-  const [report, setReport] = useState<{ sent: number; failed: number; replied: number; approved: number; queued: number; POSITIVE_REPLY: number; MEETING: number; PROPOSAL: number; WON: number } | null>(null);
-  const [syncingReplies, setSyncingReplies] = useState(false);
+  const [activity, setActivity] = useState<GmailActivity | null>(null);
+  const [activityFailed, setActivityFailed] = useState(false);
+  const [queue, setQueue] = useState<ApprovalItem[] | null>(null);
+  const [report, setReport] = useState<GmailReport | null>(null);
 
-  useEffect(() => {
-    if (isDemoMode) return;
-    api
-      .listBusinesses({ limit: 200, sort_by: "created_at", sort_dir: "desc" })
-      .then((res) => setBusinesses(res.items))
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to reach the backend API."));
-    api.gmailActivity().then(setGmailActivity).catch(() => {});
-    api.outreachApprovalQueue().then((res) => setApprovalQueue(res.items)).catch(() => {});
-    api.listOutreachBatches().then(setBatches).catch(() => {});
-    api.gmailReport().then(setReport).catch(() => {});
+  const loadLeads = useCallback(() => {
+    setError(null);
+    fetchAllBusinesses({ sort_by: "created_at", sort_dir: "desc" })
+      .then(setBusinesses)
+      .catch((err) => setError(apiProblem(err)));
   }, []);
 
-  if (isDemoMode) {
-    return (
-      <div className="flex flex-col gap-6">
-        <div className="rounded-lg border border-signal/40 bg-signal/10 px-4 py-3">
-          <p className="font-mono text-xs font-medium uppercase tracking-wider text-signal">Demo mode</p>
-          <p className="mt-1 text-sm text-foreground">Explore prepared fictional businesses and their evidence-based audits. No real emails, external accounts, or websites are affected.</p>
-        </div>
-        <div>
-          <p className="page-kicker text-signal">ProspectOS demonstration</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Find the next best digital opportunity.</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Choose a sample business to inspect its website findings, evidence, Prospect Fit, conversion opportunities, recommendations, and a safe outreach preview.</p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {["Dental clinic", "Restaurant", "Real estate agency", "Home services"].map((label) => <Link key={label} href="/prospects" className="rounded-lg border border-border bg-panel p-4 text-sm font-medium transition-colors hover:border-signal/50 hover:text-signal">{label}<span className="mt-1 block text-xs font-normal text-muted-foreground">Prepared sample audit</span></Link>)}
-        </div>
-        <Link href="/prospects" className="w-fit rounded-md bg-signal px-4 py-2 text-sm font-medium text-slate-950">Explore sample businesses</Link>
-      </div>
-    );
-  }
+  useEffect(() => {
+    loadLeads();
+    api.gmailActivity().then(setActivity).catch(() => setActivityFailed(true));
+    api.outreachApprovalQueue().then((res) => setQueue(res.items)).catch(() => {});
+    api.gmailReport().then(setReport).catch(() => {});
+  }, [loadLeads]);
 
   const stats = useMemo(() => {
     if (!businesses) return null;
-    const total = businesses.length;
-    const noWebsite = businesses.filter((b) => b.website_status === "not_found" || !b.website).length;
-    const highOpportunity = businesses.filter((b) => (b.latest_opportunity_score ?? 0) >= 70).length;
-    const audited = businesses.filter((b) => b.latest_opportunity_score !== null).length;
-    const won = businesses.filter((b) => b.current_status === "WON").length;
     const scored = businesses.filter((b) => b.latest_opportunity_score !== null);
     const avgScore =
       scored.length === 0
         ? null
         : Math.round(scored.reduce((sum, b) => sum + (b.latest_opportunity_score ?? 0), 0) / scored.length);
-    return { total, noWebsite, highOpportunity, audited, won, avgScore };
+    return {
+      total: businesses.length,
+      audited: scored.length,
+      strong: scored.filter((b) => (b.latest_opportunity_score ?? 0) >= 70).length,
+      avgScore,
+      top: [...scored]
+        .sort((a, b) => (b.latest_opportunity_score ?? 0) - (a.latest_opportunity_score ?? 0))
+        .slice(0, 8),
+    };
   }, [businesses]);
 
-  const topOpportunities = useMemo(() => {
-    if (!businesses) return [];
-    return [...businesses]
-      .filter((b) => b.latest_opportunity_score !== null)
-      .sort((a, b) => (b.latest_opportunity_score ?? 0) - (a.latest_opportunity_score ?? 0))
-      .slice(0, 8);
-  }, [businesses]);
-
-  const approvalGroups = useMemo(() => {
-    const groups = new Map<string, typeof approvalQueue>();
-    approvalQueue.forEach((item) => groups.set(item.business_id, [...(groups.get(item.business_id) ?? []), item]));
-    return [...groups.values()];
-  }, [approvalQueue]);
-
-  const pipeline = useMemo(() => {
-    const stages = ["NEW", "QUALIFIED", "CONTACTED", "REPLIED", "WON"];
-    return stages.map((stage) => ({ stage, count: businesses?.filter((business) => business.current_status === stage).length ?? 0 }));
-  }, [businesses]);
+  const toReview = queue?.filter((item) => item.approval_status !== "APPROVED").length;
+  const readyToSend = queue?.filter((item) => item.approval_status === "APPROVED").length;
 
   return (
-    <div className="flex flex-col gap-6">
-      {isDemoMode && (
-        <div className="rounded-lg border border-signal/40 bg-signal/10 px-4 py-3">
-          <p className="font-mono text-xs font-medium uppercase tracking-wider text-signal">Demo mode</p>
-          <p className="mt-1 text-sm text-foreground">Explore prepared fictional businesses and their evidence-based audits. No real emails, external accounts, or websites are affected.</p>
-        </div>
-      )}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-wider text-signal">Live signal</p>
-          <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Find, audit, and track local business prospects.</p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/discover">
-            <Button variant="outline">Discover prospects</Button>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Today"
+        description="What needs attention across your leads, and where they stand."
+        meta={stats ? `${stats.total} leads, ${stats.audited} audited` : undefined}
+        actions={
+          <Link href="/discover" className={buttonClasses()}>
+            Find leads
           </Link>
-          <Link href="/outreach">
-            <Button variant="outline">Open outreach</Button>
-          </Link>
-          <Link href="/prospects">
-            <Button>View all prospects</Button>
-          </Link>
-        </div>
-      </div>
+        }
+      />
 
-      {error && (
-        <Card className="border-red-500/40 bg-red-500/5">
-          <CardContent className="text-sm text-red-400">
-            Couldn&apos;t reach the backend API: {error}. Is it running at{" "}
-            <code>{process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}</code>?
-          </CardContent>
+      {error && <ErrorState title="Your leads didn't load" body={error} onRetry={loadLeads} />}
+
+      <section aria-labelledby="attention-heading" className="grid gap-4 lg:grid-cols-[1fr_auto]">
+        <Card className="flex flex-col justify-between gap-6 p-5">
+          <h2 id="attention-heading" className="text-base font-semibold text-ink">
+            Needs attention
+          </h2>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
+            <Figure label="Drafts to review" value={toReview} href="/outreach" />
+            <Figure label="Ready to send" value={readyToSend} href="/outreach" />
+            <Figure label="Replies" value={report?.replied} href="/outreach" />
+            <Figure label="Strong opportunities" value={stats?.strong} href="#opportunities" />
+          </dl>
         </Card>
-      )}
-
-      <section className="grid gap-6 border-y border-border/70 py-6 lg:grid-cols-[1.4fr_.6fr]">
-        <div>
-          <p className="page-kicker text-signal">Today</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight">Here&apos;s what needs attention.</h2>
-          <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-4">
-            <Attention label="Drafts to review" value={approvalQueue.filter((item) => item.approval_status !== "APPROVED").length} href="#approval-queue" />
-            <Attention label="Ready to send" value={approvalQueue.filter((item) => item.approval_status === "APPROVED").length} href="#approval-queue" />
-            <Attention label="Reply signals" value={report?.replied ?? 0} href="#activity" />
-            <Attention label="High opportunity" value={stats?.highOpportunity} href="#opportunities" />
-          </div>
-        </div>
-        <div className="flex items-center gap-5 border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"><RadialGauge score={stats?.avgScore ?? null} label="Average opportunity" /><p className="text-sm text-muted-foreground">Your audited pipeline is averaging <span className="font-medium text-foreground">{stats?.avgScore ?? "—"}</span> opportunity points.</p></div>
+        <Card className="flex items-center gap-5 p-5 lg:w-[440px]">
+          <RadialGauge score={stats?.avgScore ?? null} label="Average opportunity" />
+          <p className="text-sm leading-6 text-graphite">
+            {stats === null
+              ? error
+                ? "Shown once your leads load."
+                : "Averaging the audited leads."
+              : stats.avgScore === null
+                ? "No lead has been audited yet. Open a lead and run an audit to score it."
+                : `Across ${stats.audited} audited ${stats.audited === 1 ? "lead" : "leads"}. Strong starts at 70.`}
+          </p>
+        </Card>
       </section>
 
-      <section className="border-b border-border/70 pb-5"><div className="flex items-center justify-between"><div><p className="page-kicker">Pipeline</p><h2 className="mt-1 text-base font-semibold">Where prospects are moving</h2></div><Link href="/prospects" className="text-sm text-signal hover:underline">View pipeline</Link></div><div className="mt-4 grid grid-cols-5 gap-2">{pipeline.map(({ stage, count }) => <div key={stage} className="border-l border-border pl-3 first:border-l-0 first:pl-0"><p className="font-mono text-xl font-semibold">{count}</p><p className="mt-1 text-xs text-muted-foreground">{stage.charAt(0) + stage.slice(1).toLowerCase()}</p></div>)}</div></section>
+      <section aria-labelledby="pipeline-heading">
+        <SectionHeading id="pipeline-heading" title="Pipeline" href="/pipeline" linkLabel="Open pipeline" />
+        {businesses ? (
+          <PhaseSummary businesses={businesses} />
+        ) : error ? (
+          <p className="text-sm text-graphite">Shown once your leads load.</p>
+        ) : (
+          <LoadingRegion label="Counting leads" className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Card key={i} className="space-y-2 p-4">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-6 w-8" />
+              </Card>
+            ))}
+          </LoadingRegion>
+        )}
+      </section>
 
-      <Card id="approval-queue" className="hidden">
-        <CardHeader><CardTitle>Approval queue</CardTitle></CardHeader>
-        <CardContent>
-          {!approvalQueue.length ? <p className="text-sm text-muted-foreground">No unsent drafts with a prospect email.</p> : <>
-            <div className="flex flex-col gap-2">
-              {approvalGroups.slice(0, 20).map((group) => { const item = group[0]; const approved = group.filter((draft) => draft.approval_status === "APPROVED"); return <div key={item.business_id} className="flex items-start gap-3 border-t border-border pt-3 text-sm">
-                <input type="checkbox" disabled={!approved.length} checked={approved.length > 0 && approved.every((draft) => selectedDrafts.has(draft.outreach_id))} onChange={() => setSelectedDrafts((previous) => { const next = new Set(previous); approved.forEach((draft) => next.has(draft.outreach_id) ? next.delete(draft.outreach_id) : next.add(draft.outreach_id)); return next; })} aria-label={`Select ${item.business_name}`} />
-                <Link href={`/prospects/${item.business_id}`} className="min-w-0 flex-1 hover:underline"><strong>{item.business_name}</strong><p className="mt-0.5 truncate text-xs text-muted-foreground">{item.subject ?? "No subject"} · {item.email}</p>{group.length > 1 && <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{group.length} drafts awaiting review</p>}</Link>
-                <span className={approved.length === group.length ? "text-emerald-400" : "text-amber-400"}>{approved.length === group.length ? "Approved" : "Needs review"}</span>
-              </div>})}
-            </div>
-            <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-3">
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">Batch name<input className="h-9 rounded-md border border-border bg-transparent px-2 text-sm text-foreground" value={batchName} onChange={(e) => setBatchName(e.target.value)} placeholder="e.g. Austin retailers — Aug 23" /></label>
-              <Button disabled={batchBusy || selectedDrafts.size === 0 || !batchName.trim()} onClick={async () => { setBatchBusy(true); setBatchError(null); try { await api.createOutreachBatch(batchName, [...selectedDrafts]); setBatchName(""); setSelectedDrafts(new Set()); const [queue, nextBatches] = await Promise.all([api.outreachApprovalQueue(), api.listOutreachBatches()]); setApprovalQueue(queue.items); setBatches(nextBatches); } catch (err) { setBatchError(err instanceof ApiError ? err.message : "Could not create batch."); } finally { setBatchBusy(false); } }}>{batchBusy ? "Creating…" : `Create batch (${selectedDrafts.size})`}</Button>
-              {batchError && <span className="text-xs text-red-400">{batchError}</span>}
-            </div>
-          </>}
-        </CardContent>
-      </Card>
-
-      <Card className="hidden">
-        <CardHeader className="flex-row items-center justify-between space-y-0"><CardTitle>Outreach results</CardTitle><Button size="sm" variant="outline" disabled={syncingReplies} onClick={async () => { setSyncingReplies(true); try { await api.syncGmailReplies(); const [nextReport, activity] = await Promise.all([api.gmailReport(), api.gmailActivity()]); setReport(nextReport); setGmailActivity(activity); } finally { setSyncingReplies(false); } }}>{syncingReplies ? "Syncing…" : "Sync replies"}</Button></CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
-          {[["Sent", report?.sent], ["Replies", report?.replied], ["Approved", report?.approved], ["Queued", report?.queued], ["Failed", report?.failed]].map(([label, value]) => <div key={String(label)}><p className="text-muted-foreground">{label}</p><p className="font-mono text-xl">{value ?? "—"}</p></div>)}
-        </CardContent>
-      </Card>
-
-      <Card className="hidden">
-        <CardHeader><CardTitle>Batch outreach</CardTitle></CardHeader>
-        <CardContent>
-          {!batches.length ? <p className="text-sm text-muted-foreground">No named batches yet. Approve drafts, then create a batch from the approval queue.</p> :
-            <div className="flex flex-col gap-2">{batches.map((batch) => <div key={batch.id} className="flex items-center justify-between border-t border-border pt-2 text-sm">
-              <span><strong>{batch.name}</strong><span className="text-muted-foreground"> · {batch.count} drafts · {batch.status} · {batch.timezone}</span></span>
-              <span className="flex gap-1"><Button size="sm" variant="outline" onClick={async () => { await api.dispatchOutreachBatch(batch.id); location.reload(); }}>Dispatch now</Button>{batch.status === "ACTIVE" ? <Button size="sm" variant="outline" onClick={async () => { await api.controlOutreachBatch(batch.id, "pause"); location.reload(); }}>Pause</Button> : <Button size="sm" variant="outline" onClick={async () => { await api.controlOutreachBatch(batch.id, "resume"); location.reload(); }}>Resume</Button>}<Button size="sm" variant="destructive" onClick={async () => { if (confirm(`Cancel "${batch.name}"? Unsent drafts will be removed from the batch.`)) { await api.controlOutreachBatch(batch.id, "cancel"); location.reload(); } }}>Cancel</Button></span>
-            </div>)}</div>}
-        </CardContent>
-      </Card>
-
-      <Card id="activity" className="border-x-0 border-b-0 border-t-0 rounded-none bg-transparent">
-        <CardHeader>
-          <CardTitle>Gmail activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-xs text-muted-foreground">Daily guardrail: {gmailActivity?.sent_today ?? 0} / {gmailActivity?.daily_limit ?? 10} sent. Batch sending will use this same limit.</p>
-          {!gmailActivity?.items.length ? <p className="text-sm text-muted-foreground">No Gmail actions yet.</p> : (
-            <div className="flex flex-col gap-2">{gmailActivity.items.slice(0, 8).map((item) => (
-              <div key={item.id} className="flex items-start justify-between gap-4 border-t border-border pt-2 text-sm">
-                <span><span className={activityTone(item.action)}>{activityLabel(item.action)}</span>{item.detail ? `: ${item.detail}` : ""}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString()}</span>
-              </div>
-            ))}</div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card id="opportunities">
-        <CardHeader>
-          <CardTitle>Top opportunities</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {businesses === null ? (
-            <p className="p-4 text-sm text-muted-foreground">Loading…</p>
-          ) : topOpportunities.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">
-              No audited prospects yet. Head to{" "}
-              <Link href="/discover" className="underline">
-                Discover
-              </Link>{" "}
-              to find some, then run an audit from their detail page.
-            </p>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <section id="opportunities" aria-labelledby="opportunities-heading" className="min-w-0 scroll-mt-6">
+          <SectionHeading id="opportunities-heading" title="Top opportunities" href="/prospects" linkLabel="All leads" />
+          {error && !stats ? (
+            <p className="text-sm text-graphite">Shown once your leads load.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-t border-border text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Business</th>
-                  <th className="px-4 py-2 font-medium">Category</th>
-                  <th className="px-4 py-2 font-medium">Quality</th>
-                  <th className="px-4 py-2 font-medium">Opportunity</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topOpportunities.map((b) => (
-                  <tr key={b.id} className="bracket-hover border-t border-border hover:bg-white/5">
-                    <td className="px-4 py-2">
-                      <Link href={`/prospects/${b.id}`} className="font-medium hover:underline">
-                        {b.name}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">{b.city ?? "—"}</div>
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">{b.category ?? "—"}</td>
-                    <td className="px-4 py-2">
-                      <QualityBadge category={b.latest_quality_category} />
-                    </td>
-                    <td className="px-4 py-2">
-                      <OpportunityScoreBadge score={b.latest_opportunity_score} />
-                    </td>
-                    <td className="px-4 py-2">
-                      <StatusBadge status={b.current_status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <TopOpportunities items={stats?.top ?? null} />
           )}
-        </CardContent>
-      </Card>
+        </section>
+
+        <section aria-labelledby="activity-heading" className="min-w-0">
+          <SectionHeading id="activity-heading" title="Gmail activity" href="/outreach" linkLabel="Outreach" />
+          <ActivityFeed activity={activity} unavailable={activityFailed && activity === null} />
+        </section>
+      </div>
     </div>
   );
 }
 
-function Attention({
-  label,
-  value,
-  highlight = false,
-  href,
-}: {
-  label: string;
-  value: number | undefined;
-  highlight?: boolean;
-  href: string;
-}) {
+function SectionHeading({ id, title, href, linkLabel }: { id: string; title: string; href: string; linkLabel: string }) {
   return (
-    <Link href={href} className="group border-l border-border pl-4 first:border-l-0 first:pl-0">
-      <span className={`font-mono text-3xl font-semibold tabular-nums tracking-tight group-hover:text-signal ${highlight ? "text-signal" : ""}`}>{value === undefined ? "—" : value}</span>
-      <span className="mt-1 block text-xs text-muted-foreground group-hover:text-foreground">{label}</span>
-    </Link>
+    <div className="mb-3 flex items-baseline justify-between gap-4">
+      <h2 id={id} className="text-base font-semibold text-ink">
+        {title}
+      </h2>
+      <Link href={href} className="focus-ring rounded-tag text-[13px] text-survey hover:underline">
+        {linkLabel}
+      </Link>
+    </div>
   );
 }
 
-function activityLabel(action: string) {
-  return ({ SENT: "Email sent", SEND_FAILED: "Send failed", REPLIED: "Reply received", APPROVED: "Draft approved", QUEUED: "Queued for sending" } as Record<string, string>)[action] ?? action.replace(/_/g, " ");
+function Figure({ label, value, href }: { label: string; value: number | undefined; href: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="sr-only">{label}</dt>
+      <dd>
+        <Link href={href} className="focus-ring group -m-1 flex flex-col rounded-control p-1">
+          <span className="text-[28px] font-medium leading-8 tabular-nums text-ink group-hover:text-survey">
+            {value ?? "–"}
+          </span>
+          <span className="mt-1 text-[13px] text-graphite group-hover:text-ink" aria-hidden="true">
+            {label}
+          </span>
+        </Link>
+      </dd>
+    </div>
+  );
 }
 
-function activityTone(action: string) {
-  if (action === "SENT" || action === "REPLIED" || action === "APPROVED") return "text-emerald-400";
-  if (action === "SEND_FAILED") return "text-red-400";
-  return "text-amber-400";
+function TopOpportunities({ items }: { items: BusinessListItem[] | null }) {
+  if (items === null) {
+    return (
+      <LoadingRegion label="Loading leads">
+        <SkeletonRows rows={5} />
+      </LoadingRegion>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="No audited leads yet"
+        body="An audit scores a lead's website from 0 to 100. Find some leads, then run an audit from a lead's page."
+        action={
+          <Link href="/discover" className={buttonClasses("outline", "sm")}>
+            Find leads
+          </Link>
+        }
+      />
+    );
+  }
+  return (
+    <div className="data-table">
+      <table className="text-sm">
+        <thead>
+          <tr>
+            <th scope="col" className="w-1/2">Business</th>
+            <th scope="col" className="hidden md:table-cell">Quality</th>
+            <th scope="col">Opportunity</th>
+            <th scope="col" className="hidden sm:table-cell">Stage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((b) => (
+            <tr key={b.id}>
+              <td className="max-w-0 py-2">
+                <Link href={`/prospects/${b.id}`} className="focus-ring block truncate rounded-tag font-medium text-ink hover:underline">
+                  {b.name}
+                </Link>
+                <span className="block truncate text-xs text-graphite">
+                  {[b.category, b.city].filter(Boolean).join(", ") || "No category or city"}
+                </span>
+              </td>
+              <td className="hidden md:table-cell">
+                <QualityBadge category={b.latest_quality_category} />
+              </td>
+              <td className="whitespace-nowrap">
+                <OpportunityScoreBadge score={b.latest_opportunity_score} />
+              </td>
+              <td className="hidden sm:table-cell">
+                <StatusBadge status={b.current_status} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DemoLanding() {
+  const [sample, setSample] = useState<BusinessListItem | null | undefined>(undefined);
+
+  useEffect(() => {
+    api
+      .listBusinesses({ limit: 200 })
+      .then((res) => {
+        const scored = res.items.filter((b) => b.latest_opportunity_score !== null);
+        scored.sort((a, b) => (b.latest_opportunity_score ?? 0) - (a.latest_opportunity_score ?? 0));
+        setSample(scored[0] ?? res.items[0] ?? null);
+      })
+      .catch(() => setSample(null));
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-10">
+      <DemoNotice>Every business here is fictional sample data. Nothing you do sends email or touches a real website.</DemoNotice>
+
+      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-14">
+        <section className="max-w-xl pt-2">
+          <h1 className="font-serif text-[34px] font-medium leading-[40px] tracking-[-0.015em] text-ink sm:text-[44px] sm:leading-[50px]">
+            Find the local businesses a better website would help most.
+          </h1>
+          <div className="mt-6 flex flex-col gap-3 text-[15px] leading-7 text-graphite">
+            <p>ProspectOS finds local businesses and audits their websites.</p>
+            <p>Each one gets an opportunity score, listed with the findings that produced it.</p>
+            <p>Outreach is drafted from those findings, and nothing is sent until a person approves it.</p>
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/prospects" className={buttonClasses()}>
+              Browse sample leads
+            </Link>
+            <Link href="/pipeline" className={buttonClasses("outline")}>
+              See the pipeline
+            </Link>
+          </div>
+        </section>
+
+        <SampleLead sample={sample} />
+      </div>
+    </div>
+  );
+}
+
+function SampleLead({ sample }: { sample: BusinessListItem | null | undefined }) {
+  if (sample === undefined) {
+    return (
+      <LoadingRegion label="Loading a sample lead">
+        <Card className="flex h-[300px] flex-col gap-4 p-6">
+          <Skeleton className="h-6 w-1/2" />
+          <Skeleton className="h-3.5 w-1/3" />
+          <Skeleton className="mt-4 h-16 w-24" />
+          <Skeleton className="mt-auto h-3 w-full" />
+        </Card>
+      </LoadingRegion>
+    );
+  }
+  if (sample === null) {
+    return (
+      <Card className="p-6 text-sm text-graphite">
+        The sample data isn&apos;t available right now.{" "}
+        <Link href="/prospects" className="focus-ring rounded-tag text-survey hover:underline">
+          Open the leads list
+        </Link>{" "}
+        to try again.
+      </Card>
+    );
+  }
+  const where = [sample.category, sample.city].filter(Boolean).join(", ");
+  return (
+    <PrimaryCard className="flex flex-col gap-6 p-6">
+      <div>
+        <p className="text-xs text-graphite">Highest-scoring sample lead</p>
+        <h2 className="mt-1.5 font-serif text-[22px] font-medium leading-7 text-ink">{sample.name}</h2>
+        {where && <p className="mt-1 text-[13px] text-graphite">{where}</p>}
+      </div>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <ScoreGrade score={sample.latest_opportunity_score} label="Opportunity" />
+        {sample.latest_quality_category && (
+          <div className="flex flex-col items-start gap-1.5">
+            <span className="text-xs text-graphite">Website quality</span>
+            <QualityBadge category={sample.latest_quality_category} />
+          </div>
+        )}
+      </div>
+      <StageTrack status={sample.current_status} />
+      <Link href={`/prospects/${sample.id}`} className={buttonClasses("outline", "md", "self-start")}>
+        Open this lead
+      </Link>
+    </PrimaryCard>
+  );
 }

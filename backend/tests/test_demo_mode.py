@@ -45,6 +45,8 @@ def test_demo_mode_rejects_live_operations_before_they_can_reach_integrations(cl
         ("post", "/api/businesses/search", {"json": {"category": "plumber", "city": "Austin"}}),
         ("post", "/api/businesses/demo-brightsmile-dental/outreach", {"json": {}}),
         ("post", "/api/gmail/outreach/draft-demo/send", {}),
+        ("post", "/api/gmail/batches/any-batch/dispatch", {}),
+        ("post", "/api/gmail/batches/any-batch/pause", {}),
         ("get", "/api/gmail/connect", {}),
         ("get", "/api/businesses/export-csv", {}),
         ("post", "/api/businesses/not-a-demo/audit", {}),
@@ -53,3 +55,16 @@ def test_demo_mode_rejects_live_operations_before_they_can_reach_integrations(cl
         response = getattr(client, method)(path, **kwargs)
         assert response.status_code == 403, (path, response.text)
         assert "Demo Mode is read-only" in response.json()["detail"]
+
+
+def test_demo_leads_stay_in_research_stages_because_no_draft_was_sent():
+    from app.services import demo_data
+
+    research = {"NEW", "AUDITED", "QUALIFIED", "OUTREACH_READY"}
+    items = demo_data.list_businesses()["items"]
+    assert len({item["current_status"] for item in items}) > 1
+    for item in items:
+        detail = demo_data.business_detail(item["id"])
+        assert item["current_status"] in research
+        assert detail["current_status"] == item["current_status"]
+        assert all(draft["sent_at"] is None for draft in detail["outreach_drafts"])

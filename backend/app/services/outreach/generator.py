@@ -1,4 +1,7 @@
+import json
 import re
+
+import httpx
 
 from app.services.ai.base import AIProvider
 from app.services.ai.ollama_provider import OllamaProvider
@@ -171,9 +174,18 @@ def generate_outreach_draft(
         ordered_reasons = [observation, possible_impact]
     elif has_internal_audit_language(" ".join(ordered_reasons)):
         raise ValueError("This opportunity has no safe customer-facing observation. Re-audit or select a different angle.")
-    subject, body = provider.generate_outreach(
-        business_name, category, resolved_angle, ordered_reasons, sender=sender, social_proof=social_proof
-    )
+    try:
+        subject, body = provider.generate_outreach(
+            business_name, category, resolved_angle, ordered_reasons, sender=sender, social_proof=social_proof
+        )
+    except (httpx.HTTPError, json.JSONDecodeError):
+        # Ollama can answer the probe and still fail to generate (model not
+        # pulled, timeout, dropped connection, a non-JSON reply). Fall back
+        # instead of a 500.
+        provider, generated_by = TemplateProvider(), "template"
+        subject, body = provider.generate_outreach(
+            business_name, category, resolved_angle, ordered_reasons, sender=sender, social_proof=social_proof
+        )
     # An LLM must never be allowed to leak internal audit terminology. The
     # deterministic provider receives only the customer-facing translation.
     if needs_editorial_rewrite(f"{subject}\n{body}"):

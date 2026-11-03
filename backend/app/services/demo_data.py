@@ -139,6 +139,15 @@ _BUSINESSES = [
 ]
 
 
+# Spread across the Research stages only. Every prepared draft is unsent, so
+# a Contact-or-later stage would claim outreach that never happened.
+_STATUSES = {
+    _DENTAL_ID: "OUTREACH_READY",
+    _RESTAURANT_ID: "QUALIFIED",
+    _REALTY_ID: "AUDITED",
+    _HOME_ID: "OUTREACH_READY",
+}
+
 def _draft(business_id: str, subject: str, body: str, angle: str) -> dict:
     return {"id": f"draft-{business_id}", "business_id": business_id, "angle": angle, "subject": subject, "body": body,
             "generated_by": "prepared-demo", "sender_id": None, "sender_name": "ProspectOS Demo", "sender_title": "Sample outreach", "sender_email": None,
@@ -164,7 +173,7 @@ def list_businesses(*, search: str | None = None, city: str | None = None, categ
     rows.sort(key=lambda row: (row.get(sort_by) is None, row.get(sort_by) or ""), reverse=sort_dir == "desc")
     for row in rows:
         audit = _AUDITS[row["id"]]
-        row.update({"latest_opportunity_score": audit["overall_opportunity_score"], "latest_quality_category": audit["quality_category"], "current_status": "AUDITED"})
+        row.update({"latest_opportunity_score": audit["overall_opportunity_score"], "latest_quality_category": audit["quality_category"], "current_status": _STATUSES[row["id"]]})
     return {"items": rows[offset:offset + limit], "total": len(rows), "limit": limit, "offset": offset}
 
 
@@ -173,7 +182,7 @@ def business_detail(business_id: str) -> dict | None:
     if not business:
         return None
     audit = deepcopy(_AUDITS[business_id])
-    return {**business, "current_status": "AUDITED", "latest_audit": audit, "audits": [audit], "outreach_drafts": [deepcopy(_DRAFTS[business_id])], "contracts": [], "status_history": [], "notes": []}
+    return {**business, "current_status": _STATUSES[business_id], "latest_audit": audit, "audits": [audit], "outreach_drafts": [deepcopy(_DRAFTS[business_id])], "contracts": [], "status_history": [], "notes": []}
 
 
 def audit_for(business_id: str) -> dict | None:

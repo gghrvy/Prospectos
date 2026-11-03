@@ -2,22 +2,15 @@ import type { HTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
 
+// A panel is a filled sheet laid on the paper: no shadow, one hairline edge.
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn("relative rounded-lg border border-border/80 bg-panel", className)}
-      {...props}
-    />
-  );
+  return <div className={cn("relative rounded-panel border border-rule bg-sheet", className)} {...props} />;
 }
 
-// A primary panel gets a hairline signal-colored top edge — reserved for
-// the one or two panels per page that matter most (e.g. the audit summary),
-// so it reads as emphasis rather than decoration.
+// The one or two panels per page that carry the page's main finding get a
+// survey-green top rule, so emphasis comes from a single line, not decoration.
 export function PrimaryCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-  <Card className={cn("border-t-2 border-t-signal/70 shadow-[0_12px_36px_rgba(0,0,0,.16)]", className)} {...props} />
-  );
+  return <Card className={cn("border-t-2 border-t-survey", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -25,12 +18,7 @@ export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
 }
 
 export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
-  return (
-    <h3
-      className={cn("text-sm font-semibold tracking-tight text-foreground", className)}
-      {...props}
-    />
-  );
+  return <h2 className={cn("text-base font-semibold text-ink", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

@@ -3,66 +3,95 @@
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ResultsTable } from "@/components/discover/results-table";
+import { useSaveResults } from "@/components/discover/use-save-results";
+import { MapPicker } from "@/components/map-picker";
+import { DemoNotice, PageHeader } from "@/components/shell/page-header";
+import { Button, buttonClasses } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MapPicker } from "@/components/map-picker";
-import { Select } from "@/components/ui/select";
 import { api, ApiError } from "@/lib/api";
 import { isDemoMode } from "@/lib/runtime";
 import type { DiscoveredBusiness } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type Mode = "city" | "map";
 
 const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 }; // New York City
+const QUICK_PICKS = ["plumber", "electrician", "dentist", "lawyer", "salon", "retail"];
+const SEARCH_NOTE = "Searching OpenStreetMap. A wide area or a broad category can take up to a minute.";
 
+// Two components so the demo never runs the live page's hooks (the old page
+// returned early before its hooks, which breaks React's hook order).
 export default function DiscoverPage() {
-  if (isDemoMode) {
-    return (
-      <div className="flex max-w-2xl flex-col gap-4 rounded-lg border border-signal/40 bg-signal/10 p-6">
-        <p className="font-mono text-xs font-medium uppercase tracking-wider text-signal">Demo mode</p>
-        <h1 className="text-2xl font-semibold tracking-tight">Prepared prospects, not live discovery.</h1>
-        <p className="text-sm text-muted-foreground">This public experience intentionally does not search maps, accept visitor URLs, or call external data providers. Explore the prepared fictional businesses to see the full ProspectOS audit workflow.</p>
-        <Link href="/prospects" className="text-sm font-medium text-signal hover:underline">Browse sample businesses</Link>
-      </div>
-    );
-  }
+  return isDemoMode ? <DemoDiscover /> : <LiveDiscover />;
+}
+
+function DemoDiscover() {
+  return (
+    <div className="flex flex-col gap-6">
+      <DemoNotice>Searching for real businesses is turned off here, so the demo never calls a map or data provider.</DemoNotice>
+      <PageHeader title="Discover" description="Where new leads come from in the full version." />
+      <Card className="max-w-3xl p-5">
+        <h2 className="text-base font-semibold text-ink">Where leads come from</h2>
+        <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm leading-6 sm:grid-cols-[160px_minmax(0,1fr)]">
+          <dt className="font-medium text-ink">OpenStreetMap</dt>
+          <dd className="text-graphite">Search by city or draw a radius on the map, filtered by business category.</dd>
+          <dt className="font-medium text-ink">Geoapify</dt>
+          <dd className="text-graphite">A free-tier fallback when OpenStreetMap is slow or returns little.</dd>
+          <dt className="font-medium text-ink">CSV import</dt>
+          <dd className="text-graphite">Bring a list you already have from the Leads page.</dd>
+          <dt className="font-medium text-ink">Added by hand</dt>
+          <dd className="text-graphite">One business at a time, with only the details you can confirm.</dd>
+        </dl>
+        <p className="mt-4 text-[13px] leading-5 text-graphite">
+          No Google Maps scraping and no paid data APIs. Websites are crawled politely: robots.txt is respected, at most ten
+          pages, two levels deep.
+        </p>
+        <Link href="/prospects" className={buttonClasses("outline", "md", "mt-5")}>
+          Browse the sample leads
+        </Link>
+      </Card>
+    </div>
+  );
+}
+
+function LiveDiscover() {
   const [mode, setMode] = useState<Mode>("city");
   const [categories, setCategories] = useState<string[]>([]);
 
   useEffect(() => {
+    // Non-fatal: the category field still takes free text without suggestions.
     api
       .searchCategories()
       .then((res) => setCategories(res.categories))
-      .catch(() => {
-        // Non-fatal -- the category input still works as freeform text,
-        // it just won't have autocomplete suggestions.
-      });
+      .catch(() => {});
   }, []);
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <p className="font-mono text-[11px] uppercase tracking-wider text-signal">Discovery</p>
-        <h1 className="text-3xl font-semibold tracking-tight">Discover prospects</h1>
-        <p className="text-sm text-muted-foreground">
-          Search OpenStreetMap for local businesses. No Google Maps scraping, no paid APIs.
-          Prefer bulk import instead?{" "}
-          <Link href="/prospects" className="text-signal hover:underline">
-            Import a CSV from the Prospects page
-          </Link>
-          .
-        </p>
-      </div>
+      <PageHeader
+        title="Discover"
+        description="Search OpenStreetMap for local businesses. No Google Maps scraping and no paid APIs."
+        meta={
+          <>
+            Have a list already?{" "}
+            <Link href="/prospects" className="focus-ring rounded-[2px] text-survey underline-offset-2 hover:underline">
+              Import a CSV from Leads
+            </Link>
+          </>
+        }
+      />
 
-      <div className="flex gap-1 self-start rounded-sm border border-border p-1">
-        <ModeButton active={mode === "city"} onClick={() => setMode("city")}>
-          Search by city
-        </ModeButton>
-        <ModeButton active={mode === "map"} onClick={() => setMode("map")}>
-          Search on map
-        </ModeButton>
+      <div role="group" aria-label="Search by" className="inline-flex self-start rounded-control border border-rule bg-sheet p-0.5">
+        <ModeOption active={mode === "city"} onSelect={() => setMode("city")}>
+          City
+        </ModeOption>
+        <ModeOption active={mode === "map"} onSelect={() => setMode("map")}>
+          Map area
+        </ModeOption>
       </div>
 
       {mode === "city" ? <CitySearch categories={categories} /> : <MapSearch categories={categories} />}
@@ -70,22 +99,16 @@ export default function DiscoverPage() {
   );
 }
 
-function ModeButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function ModeOption({ active, onSelect, children }: { active: boolean; onSelect: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      className={`rounded-sm px-3 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors ${
-        active ? "bg-signal text-slate-950" : "text-muted-foreground hover:text-foreground"
-      }`}
+      aria-pressed={active}
+      onClick={onSelect}
+      className={cn(
+        "focus-ring h-8 rounded-[5px] px-3.5 text-[13px] font-medium transition-colors duration-fast ease-assay",
+        active ? "bg-ink text-sheet" : "text-graphite hover:bg-ink/[0.05] hover:text-ink"
+      )}
     >
       {children}
     </button>
@@ -93,210 +116,87 @@ function ModeButton({
 }
 
 function CategoryField({
+  id,
   value,
   onChange,
   categories,
   optional = false,
 }: {
+  id: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   categories: string[];
   optional?: boolean;
 }) {
   return (
-    <div>
-      <Label>Business category {optional ? "(optional)" : "*"}</Label>
-      <Input
-        list="known-categories"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={optional ? "Search all businesses, or choose a category" : "Search supported categories, e.g. pharmacy"}
-      />
-      <datalist id="known-categories">
-        {categories.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
-      <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-        {optional
-          ? "Blank sweeps every business type in the radius. Comma-separate terms (e.g. \"cafe, restaurant\") to search several at once."
-          : categories.length > 0
-            ? `${categories.length} known categories map to a precise tag -- other terms still work but may return fewer results.`
-            : "Loading known categories..."}
-      </p>
-    </div>
-  );
-}
-
-const VERTICAL_PRESETS = ["plumber", "electrician", "dentist", "lawyer", "salon", "retail"];
-
-function VerticalPresets({ onSelect }: { onSelect: (category: string) => void }) {
-  return (
-    <div>
-      <Label>Quick picks</Label>
-      <div className="mt-1 flex flex-wrap gap-1">
-        {VERTICAL_PRESETS.map((preset) => (
-          <Button key={preset} type="button" size="sm" variant="outline" onClick={() => onSelect(preset)}>
-            {preset}
-          </Button>
-        ))}
+    <div className="flex flex-col gap-2">
+      <div>
+        <Label htmlFor={id}>
+          Business category{" "}
+          {optional ? (
+            <span className="font-normal">(optional)</span>
+          ) : (
+            <span className="text-brick" aria-hidden="true">
+              *
+            </span>
+          )}
+        </Label>
+        <Input
+          id={id}
+          list={`${id}-known`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={!optional}
+          aria-describedby={`${id}-help`}
+          placeholder={optional ? "Every business in the area" : "Pharmacy"}
+        />
+        <datalist id={`${id}-known`}>
+          {categories.map((category) => (
+            <option key={category} value={category} />
+          ))}
+        </datalist>
+        <p id={`${id}-help`} className="mt-1 text-xs leading-5 text-graphite">
+          {optional
+            ? "Leave blank to include every type. Separate terms with commas to search several, such as cafe, bakery."
+            : categories.length > 0
+              ? `${categories.length} known categories match a precise map tag. Other words work too, with fewer results.`
+              : "Type any business category."}
+        </p>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">Shortcuts only — use the searchable category field for the full OSM and Geoapify-supported set.</p>
+      <div role="group" aria-label="Quick picks" className="flex flex-wrap gap-1.5">
+        {QUICK_PICKS.map((pick) => {
+          const active = value.trim().toLowerCase() === pick;
+          return (
+            <button
+              key={pick}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(pick)}
+              className={cn(
+                "focus-ring h-7 rounded-tag border px-2.5 text-[13px] transition-colors duration-fast ease-assay",
+                active ? "border-ink bg-ink text-sheet" : "border-rule bg-sheet text-ink hover:border-graphite/40 hover:bg-paper"
+              )}
+            >
+              {pick.charAt(0).toUpperCase() + pick.slice(1)}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function ResultsTable({
-  results,
-  saving,
-  auditing,
-  onSave,
-  onSaveAndAudit,
-}: {
-  results: DiscoveredBusiness[] | null;
-  saving: boolean;
-  auditing: { done: number; total: number } | null;
-  onSave: (chosen: DiscoveredBusiness[]) => void;
-  onSaveAndAudit: (chosen: DiscoveredBusiness[]) => void;
-}) {
-  // Keyed by array index into `results` — reset whenever a new search
-  // replaces the results array, since the identity underneath each index
-  // has changed.
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [minimumFit, setMinimumFit] = useState(0);
-  const [emailOnly, setEmailOnly] = useState(false);
-  const [minimumReviews, setMinimumReviews] = useState(0);
-  const [websiteFilter, setWebsiteFilter] = useState<"any" | "has" | "none">("any");
-  const [contactFilter, setContactFilter] = useState<"any" | "has" | "none">("any");
-  const [excludeChains, setExcludeChains] = useState(true);
-
-  useEffect(() => {
-    setSelected(new Set());
-  }, [results]);
-
-  if (results === null) return null;
-
-  const visible = results.filter((item) => {
-    const hasContact = Boolean(item.email || item.phone || item.website || item.social_url);
-    const looksLikeChain = /\b(inc\.?|llc|ltd\.?|corp\.?|co\.?|franchise|[0-9]+ locations?)\b/i.test(item.name);
-    return (item.prospect_fit_score ?? 0) >= minimumFit
-      && (!emailOnly || Boolean(item.email))
-      && (item.review_count ?? 0) >= minimumReviews
-      && (websiteFilter === "any" || (websiteFilter === "has" ? Boolean(item.website) : !item.website))
-      && (contactFilter === "any" || (contactFilter === "has" ? hasContact : !hasContact))
-      && (!excludeChains || !looksLikeChain);
-  });
-  const visibleIndexes = new Set(visible.map((item) => results.indexOf(item)));
-  const selectedVisibleCount = [...selected].filter((index) => visibleIndexes.has(index)).length;
-  const allSelected = visible.length > 0 && selectedVisibleCount === visible.length;
-  const busy = saving || auditing !== null;
-
-  function toggleOne(i: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
-  }
-
-  function toggleAll() {
-    setSelected((previous) => {
-      const next = new Set(previous);
-      if (allSelected) visibleIndexes.forEach((index) => next.delete(index));
-      else visibleIndexes.forEach((index) => next.add(index));
-      return next;
-    });
-  }
-
+function SearchFeedback({ searching, error }: { searching: boolean; error: string | null }) {
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle>{results.length} result(s)</CardTitle>
-        {results.length > 0 && (
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] text-muted-foreground">{selected.size} selected</span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onSave(results!)}
-              disabled={busy}
-            >
-              {saving ? "Saving…" : "Save all as prospects"}
-            </Button>
-          </div>
-        )}
-      </CardHeader>
-      {selected.size > 0 && <div className="sticky top-16 z-[2] flex flex-wrap items-center justify-between gap-3 border-y border-border bg-panel-raised px-4 py-2.5"><span className="text-sm font-medium">{selected.size} businesses selected</span><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => onSave(results!.filter((_, i) => selected.has(i)))} disabled={busy}>{saving ? "Saving…" : "Save prospects"}</Button><Button size="sm" onClick={() => onSaveAndAudit(results!.filter((_, i) => selected.has(i)))} disabled={busy}>{auditing ? `Auditing ${auditing.done + 1}/${auditing.total}…` : "Save & audit"}</Button><Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button></div></div>}
-      <CardContent className="p-0">
-        <div className="overflow-x-auto border-t border-border bg-panel-raised/35">
-          <div className="flex min-w-max items-end gap-x-3 p-3">
-          <ResultFilter label="Minimum fit"><Select className="h-8 min-w-[72px]" value={minimumFit} onChange={(e) => setMinimumFit(Number(e.target.value))}><option value={0}>Any</option><option value={50}>50+</option><option value={70}>70+</option></Select></ResultFilter>
-          <ResultFilter label="Minimum reviews"><Select className="h-8 min-w-[72px]" value={minimumReviews} onChange={(e) => setMinimumReviews(Number(e.target.value))}><option value={0}>Any</option><option value={10}>10+</option><option value={50}>50+</option><option value={100}>100+</option></Select></ResultFilter>
-          <ResultFilter label="Website"><Select className="h-8 min-w-[116px]" value={websiteFilter} onChange={(e) => setWebsiteFilter(e.target.value as typeof websiteFilter)}><option value="any">Any</option><option value="has">Has website</option><option value="none">No website</option></Select></ResultFilter>
-          <ResultFilter label="Contact path"><Select className="h-8 min-w-[116px]" value={contactFilter} onChange={(e) => setContactFilter(e.target.value as typeof contactFilter)}><option value="any">Any</option><option value="has">Has contact</option><option value="none">No contact</option></Select></ResultFilter>
-          <label className="flex h-8 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground"><input type="checkbox" checked={emailOnly} onChange={(e) => setEmailOnly(e.target.checked)} /> Email ready only</label>
-          <label className="flex h-8 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground"><input type="checkbox" checked={excludeChains} onChange={(e) => setExcludeChains(e.target.checked)} /> Exclude likely chains</label>
-          </div>
-        </div>
-        {results.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">
-            No results. Try a broader radius, a different category term, or check spelling of the city.
-          </p>
-        ) : (
-          <div className="data-table rounded-none border-x-0 border-b-0"><table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="w-8 px-4 py-2 font-medium">
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all" />
-                </th>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Fit</th>
-                <th className="px-4 py-2 font-medium">Address</th>
-                <th className="px-4 py-2 font-medium">Phone</th>
-                <th className="px-4 py-2 font-medium">Website</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r, i) => visible.includes(r) && (
-                <tr key={i}>
-                  <td className="px-4 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(i)}
-                      onChange={() => toggleOne(i)}
-                      aria-label={`Select ${r.name}`}
-                    />
-                  </td>
-                  <td className="px-4 py-2 font-medium">{r.name}</td>
-                  <td className="px-4 py-2"><span className="text-signal">{r.prospect_fit_score ?? "—"}</span><div className="text-xs text-muted-foreground">{r.prospect_fit_reason ?? ""}</div></td>
-                  <td className="px-4 py-2 text-muted-foreground">{r.address ?? "—"}</td>
-                  <td className="px-4 py-2 text-muted-foreground">{r.phone ?? "—"}</td>
-                  <td className="px-4 py-2 text-muted-foreground">
-                    {r.website ? (
-                      <a href={r.website} target="_blank" rel="noreferrer" className="text-signal hover:underline">
-                        visit
-                      </a>
-                    ) : r.social_url ? (
-                      <a href={r.social_url} target="_blank" rel="noreferrer" className="text-signal hover:underline">
-                        {r.social_url.includes("instagram.com") ? "Instagram" : "Facebook"}
-                      </a>
-                    ) : (
-                      "no website"
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table></div>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      {searching && (
+        <p role="status" className="text-[13px] text-graphite">
+          {SEARCH_NOTE}
+        </p>
+      )}
+      {error && <ErrorState title="The search didn't finish" body={error} />}
+    </>
   );
-}
-
-function ResultFilter({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">{label}{children}</label>;
 }
 
 function CitySearch({ categories }: { categories: string[] }) {
@@ -305,20 +205,14 @@ function CitySearch({ categories }: { categories: string[] }) {
   const [country, setCountry] = useState("");
   const [radiusKm, setRadiusKm] = useState(5);
   const [limit, setLimit] = useState(50);
-
-  const [cityCheck, setCityCheck] = useState<{ status: "idle" | "checking" | "valid" | "invalid"; label?: string }>({
-    status: "idle",
-  });
-
+  const [cityCheck, setCityCheck] = useState<{ status: "idle" | "checking" | "valid" | "invalid"; label?: string }>({ status: "idle" });
   const [results, setResults] = useState<DiscoveredBusiness[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [auditProgress, setAuditProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const saver = useSaveResults();
 
-  // Validates the typed city against the real geocoder (real API-backed
-  // input, not a guess) so a typo surfaces before running the full search.
+  // Checks the typed place against the geocoder, so a typo shows up before
+  // the slow search runs.
   useEffect(() => {
     if (!city.trim()) {
       setCityCheck({ status: "idle" });
@@ -334,125 +228,77 @@ function CitySearch({ categories }: { categories: string[] }) {
     return () => clearTimeout(handle);
   }, [city, country]);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
+  async function search(event: React.FormEvent) {
+    event.preventDefault();
     if (!category.trim() || !city.trim()) {
-      setError("Category and city are required.");
+      setError("Add a category and a city to search.");
       return;
     }
     setSearching(true);
     setError(null);
-    setSaveMessage(null);
     try {
       const found = await api.searchOSM({ category, city, country: country || undefined, radius_km: radiusKm, limit, save: false });
       setResults(found as DiscoveredBusiness[]);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Search failed. Is the backend reachable?");
+      setError(err instanceof ApiError ? err.message : "The search didn't finish. Check that the API is running, then try again.");
       setResults(null);
     } finally {
       setSearching(false);
     }
   }
 
-  async function handleSave(chosen: DiscoveredBusiness[]) {
-    setSaving(true);
-    setError(null);
-    setSaveMessage(null);
-    try {
-      const saved = await api.saveBusinesses(chosen);
-      setSaveMessage(
-        `Saved ${saved.length} of ${chosen.length} selected (duplicates already in your DB were skipped).`
-      );
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleSaveAndAudit(chosen: DiscoveredBusiness[]) {
-    if (!chosen.length) return;
-    setSaving(true);
-    setError(null);
-    setSaveMessage(null);
-    try {
-      const saved = await api.saveBusinesses(chosen);
-      setSaving(false);
-      let succeeded = 0;
-      let failed = 0;
-      for (let index = 0; index < saved.length; index += 1) {
-        setAuditProgress({ done: index, total: saved.length });
-        try {
-          await api.runAudit(saved[index].id);
-          succeeded += 1;
-        } catch {
-          failed += 1;
-        }
-      }
-      setSaveMessage(`Saved ${saved.length} of ${chosen.length}; audited ${succeeded}${failed ? ` (${failed} failed)` : ""}. Existing duplicates were not re-audited.`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save and audit failed.");
-    } finally {
-      setSaving(false);
-      setAuditProgress(null);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>OpenStreetMap search</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-3">
-            <CategoryField value={category} onChange={setCategory} categories={categories} />
-            <VerticalPresets onSelect={setCategory} />
+      <Card className="p-5">
+        <form onSubmit={search} className="flex flex-col gap-5">
+          <div className="max-w-xl">
+            <CategoryField id="city-category" value={category} onChange={setCategory} categories={categories} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_110px_110px_auto] lg:items-start">
             <div>
-              <Label>City *</Label>
-              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Houston" />
-              <p className="mt-1 font-mono text-[10px]">
-                {cityCheck.status === "checking" && <span className="text-muted-foreground">checking…</span>}
-                {cityCheck.status === "valid" && (
-                  <span className="text-emerald-400" title={cityCheck.label}>
-                    resolved: {cityCheck.label?.slice(0, 40)}
-                    {(cityCheck.label?.length ?? 0) > 40 ? "…" : ""}
-                  </span>
-                )}
-                {cityCheck.status === "invalid" && <span className="text-red-400">no match found</span>}
+              <Label htmlFor="city">
+                City{" "}
+                <span className="text-brick" aria-hidden="true">
+                  *
+                </span>
+              </Label>
+              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} required placeholder="Houston" aria-describedby="city-check" />
+              <p id="city-check" aria-live="polite" className="mt-1 min-h-5 truncate text-xs leading-5" title={cityCheck.label}>
+                {cityCheck.status === "checking" && <span className="text-graphite">Checking the place…</span>}
+                {cityCheck.status === "valid" && <span className="text-ink">Found {cityCheck.label}</span>}
+                {cityCheck.status === "invalid" && <span className="text-brick">No place by that name. Check the spelling.</span>}
               </p>
             </div>
             <div>
-              <Label>Country</Label>
-              <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. USA" />
+              <Label htmlFor="country">Country</Label>
+              <Input id="country" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="USA" />
             </div>
             <div>
-              <Label>Radius (km)</Label>
-              <Input type="number" min={1} max={50} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} className="w-24" />
+              <Label htmlFor="radius">Radius, km</Label>
+              <Input id="radius" type="number" min={1} max={50} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} />
             </div>
             <div>
-              <Label>Max results</Label>
-              <Input type="number" min={1} max={200} value={limit} onChange={(e) => setLimit(Number(e.target.value))} className="w-24" />
+              <Label htmlFor="limit">Max results</Label>
+              <Input id="limit" type="number" min={1} max={200} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
             </div>
-            <Button type="submit" disabled={searching}>
+            <Button type="submit" disabled={searching} className="sm:col-span-2 lg:col-span-1 lg:mt-[22px]">
               {searching ? "Searching…" : "Search"}
             </Button>
-          </form>
-          {searching && (
-            <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-              Querying free OpenStreetMap servers -- this can take up to a minute on a slow response, especially for
-              a broad category or large radius.
-            </p>
-          )}
-        </CardContent>
+          </div>
+        </form>
       </Card>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {saveMessage && <p className="text-sm text-emerald-400">{saveMessage}</p>}
+      <SearchFeedback searching={searching} error={error} />
 
-      <ResultsTable results={results} saving={saving} auditing={auditProgress} onSave={handleSave} onSaveAndAudit={handleSaveAndAudit} />
-      </div>
+      {results && (
+        <ResultsTable
+          results={results}
+          saving={saver.saving}
+          auditing={saver.auditProgress}
+          onSave={(chosen) => void saver.save(chosen)}
+          onSaveAndAudit={(chosen) => void saver.saveAndAudit(chosen)}
+        />
+      )}
     </div>
   );
 }
@@ -462,178 +308,99 @@ function MapSearch({ categories }: { categories: string[] }) {
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [radiusKm, setRadiusKm] = useState(5);
   const [limit, setLimit] = useState(50);
-  const [recenterQuery, setRecenterQuery] = useState("");
+  const [place, setPlace] = useState("");
   const [locating, setLocating] = useState(false);
-
   const [results, setResults] = useState<DiscoveredBusiness[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [auditProgress, setAuditProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const saver = useSaveResults();
 
-  async function handleLocate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!recenterQuery.trim()) return;
+  async function locate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!place.trim()) return;
     setLocating(true);
     setError(null);
     try {
-      const result = await api.geocode(recenterQuery);
+      const result = await api.geocode(place);
       setCenter({ lat: result.latitude, lng: result.longitude });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't find that place.");
+      setError(err instanceof ApiError ? err.message : "That place couldn't be found. Check the spelling.");
     } finally {
       setLocating(false);
     }
   }
 
-  async function handleSearch() {
+  async function search() {
     setSearching(true);
     setError(null);
-    setSaveMessage(null);
     try {
-      const found = await api.searchOSM({
-        category,
-        latitude: center.lat,
-        longitude: center.lng,
-        radius_km: radiusKm,
-        limit,
-        save: false,
-      });
+      const found = await api.searchOSM({ category, latitude: center.lat, longitude: center.lng, radius_km: radiusKm, limit, save: false });
       setResults(found as DiscoveredBusiness[]);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Search failed. Is the backend reachable?");
+      setError(err instanceof ApiError ? err.message : "The search didn't finish. Check that the API is running, then try again.");
       setResults(null);
     } finally {
       setSearching(false);
     }
   }
 
-  async function handleSave(chosen: DiscoveredBusiness[]) {
-    setSaving(true);
-    setError(null);
-    setSaveMessage(null);
-    try {
-      const saved = await api.saveBusinesses(chosen);
-      setSaveMessage(
-        `Saved ${saved.length} of ${chosen.length} selected (duplicates already in your DB were skipped).`
-      );
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleSaveAndAudit(chosen: DiscoveredBusiness[]) {
-    if (!chosen.length) return;
-    setSaving(true);
-    setError(null);
-    setSaveMessage(null);
-    try {
-      const saved = await api.saveBusinesses(chosen);
-      setSaving(false);
-      let succeeded = 0;
-      let failed = 0;
-      for (let index = 0; index < saved.length; index += 1) {
-        setAuditProgress({ done: index, total: saved.length });
-        try {
-          await api.runAudit(saved[index].id);
-          succeeded += 1;
-        } catch {
-          failed += 1;
-        }
-      }
-      setSaveMessage(`Saved ${saved.length} of ${chosen.length}; audited ${succeeded}${failed ? ` (${failed} failed)` : ""}. Existing duplicates were not re-audited.`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save and audit failed.");
-    } finally {
-      setSaving(false);
-      setAuditProgress(null);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-6">
-      <Card>
-        <CardContent className="grid gap-5 pt-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-          <div className="flex flex-col gap-4 rounded-lg bg-panel-raised/45 p-4 lg:order-1">
-          <div className="flex flex-wrap items-end gap-3">
-            <CategoryField value={category} onChange={setCategory} categories={categories} optional />
-            <VerticalPresets onSelect={setCategory} />
-            <form onSubmit={handleLocate} className="flex items-end gap-2">
-              <div>
-                <Label>Jump to a place</Label>
-                <Input
-                  value={recenterQuery}
-                  onChange={(e) => setRecenterQuery(e.target.value)}
-                  placeholder="e.g. Miami, FL"
-                  className="w-56"
-                />
-              </div>
+      <Card className="grid overflow-hidden lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="flex flex-col gap-5 border-b border-rule p-5 lg:border-b-0 lg:border-r">
+          <form onSubmit={locate}>
+            <Label htmlFor="map-place">Go to a place</Label>
+            <div className="flex gap-2">
+              <Input id="map-place" value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Miami, FL" />
               <Button type="submit" variant="outline" disabled={locating}>
-                {locating ? "Locating…" : "Locate"}
+                {locating ? "Finding…" : "Go"}
               </Button>
-            </form>
-            <div className="flex-1" />
-            <Button onClick={handleSearch} disabled={searching}>
-              {searching ? "Searching…" : "Search this area"}
-            </Button>
-          </div>
-          {searching && (
-            <p className="-mt-2 font-mono text-[10px] text-muted-foreground">
-              Querying free OpenStreetMap servers -- this can take up to a minute on a slow response, especially for
-              a broad category or large radius.
-            </p>
-          )}
-
+            </div>
+          </form>
+          <CategoryField id="map-category" value={category} onChange={setCategory} categories={categories} optional />
           <div>
-            <Label>
-              Radius: <span className="text-foreground">{radiusKm} km</span>
+            <Label htmlFor="map-radius">
+              Radius <span className="font-normal tabular-nums text-ink">{radiusKm} km</span>
             </Label>
             <input
+              id="map-radius"
               type="range"
               min={1}
               max={50}
               value={radiusKm}
               onChange={(e) => setRadiusKm(Number(e.target.value))}
-              className="w-full accent-signal"
+              className="focus-ring w-full cursor-pointer accent-survey"
             />
           </div>
-
-          <div className="flex items-center gap-3">
-            <Label className="mb-0">Max results</Label>
-            <Input
-              type="number"
-              min={1}
-              max={200}
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              className="w-24"
-            />
-            <p className="font-mono text-[10px] text-muted-foreground">
-              Click the map (or drag the pin) to set the search center.
-            </p>
+          <div className="max-w-[120px]">
+            <Label htmlFor="map-limit">Max results</Label>
+            <Input id="map-limit" type="number" min={1} max={200} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
           </div>
-
+          <Button onClick={() => void search()} disabled={searching}>
+            {searching ? "Searching…" : "Search this area"}
+          </Button>
+        </div>
+        <div className="flex min-h-[340px] flex-col lg:min-h-[460px]">
+          <div className="relative flex-1 bg-paper">
+            <div className="absolute inset-0">
+              <MapPicker latitude={center.lat} longitude={center.lng} radiusKm={radiusKm} onCenterChange={(lat, lng) => setCenter({ lat, lng })} />
+            </div>
           </div>
-          <div className="h-[340px] overflow-hidden rounded-lg border border-border bg-panel lg:order-2 lg:h-full lg:min-h-[400px]">
-            <MapPicker
-              latitude={center.lat}
-              longitude={center.lng}
-              radiusKm={radiusKm}
-              onCenterChange={(lat, lng) => setCenter({ lat, lng })}
-            />
-          </div>
-        </CardContent>
+          <p className="border-t border-rule px-4 py-2 text-xs text-graphite">Click the map or drag the pin to move the center of the search.</p>
+        </div>
       </Card>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {saveMessage && <p className="text-sm text-emerald-400">{saveMessage}</p>}
+      <SearchFeedback searching={searching} error={error} />
 
-      <ResultsTable results={results} saving={saving} auditing={auditProgress} onSave={handleSave} onSaveAndAudit={handleSaveAndAudit} />
-      </div>
+      {results && (
+        <ResultsTable
+          results={results}
+          saving={saver.saving}
+          auditing={saver.auditProgress}
+          onSave={(chosen) => void saver.save(chosen)}
+          onSaveAndAudit={(chosen) => void saver.saveAndAudit(chosen)}
+        />
+      )}
     </div>
   );
 }

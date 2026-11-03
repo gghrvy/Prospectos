@@ -12,17 +12,22 @@ interface MapPickerProps {
   onCenterChange: (lat: number, lng: number) => void;
 }
 
-// A colored-dot DivIcon instead of Leaflet's default marker: the default
-// icon references image files at a path that doesn't survive bundling
-// (a well-known Leaflet+webpack papercut), and a plain signal-colored dot
-// fits this app's instrument-panel language better than a generic pin.
+// Reads a design token (an RGB triplet on :root, see globals.css) so the map
+// draws in the same colors as the rest of the app.
+function tokenColor(name: string, alpha = 1): string {
+  const triplet = getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim().split(/\s+/).join(", ");
+  return alpha === 1 ? `rgb(${triplet})` : `rgba(${triplet}, ${alpha})`;
+}
+
+// A dot DivIcon instead of Leaflet's default marker: the default icon points
+// at image files that don't survive bundling (a known Leaflet + webpack issue).
 function buildCenterIcon(L: typeof import("leaflet")) {
   return L.divIcon({
     className: "",
     html: `<span style="
       display:block;width:14px;height:14px;border-radius:9999px;
-      background:hsl(42 100% 50%);border:2px solid hsl(220 26% 6%);
-      box-shadow:0 0 0 4px hsl(42 100% 50% / 0.25);
+      background:${tokenColor("survey")};border:2px solid ${tokenColor("sheet")};
+      box-shadow:0 0 0 4px ${tokenColor("survey", 0.22)};
     "></span>`,
     iconSize: [14, 14],
     iconAnchor: [7, 7],
@@ -59,9 +64,9 @@ export function MapPicker({ latitude, longitude, radiusKm, onCenterChange }: Map
       const marker = L.marker([latitude, longitude], { icon, draggable: true }).addTo(map);
       const circle = L.circle([latitude, longitude], {
         radius: radiusKm * 1000,
-        color: "#FFB300",
+        color: tokenColor("survey"),
         weight: 1.5,
-        fillColor: "#FFB300",
+        fillColor: tokenColor("survey"),
         fillOpacity: 0.08,
       }).addTo(map);
 

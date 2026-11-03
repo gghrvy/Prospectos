@@ -226,28 +226,15 @@ def list_batches(db: Session = Depends(get_db)):
              "count": db.scalar(select(func.count()).select_from(Outreach).where(Outreach.batch_id == batch.id)), "timezone": batch.timezone} for batch in batches]
 
 
-@router.post("/batches/{batch_id}/{action}")
-def control_batch(batch_id: str, action: str, db: Session = Depends(get_db)):
-    if action not in {"pause", "resume", "cancel"}:
-        raise HTTPException(404, "Unknown batch action")
-    batch = db.get(OutreachBatch, batch_id)
-    if not batch:
-        raise HTTPException(404, "Batch not found")
-    if action == "pause": batch.status = "PAUSED"
-    elif action == "resume": batch.status = "ACTIVE"
-    else:
-        batch.status = "CANCELLED"
-        for draft in db.scalars(select(Outreach).where(Outreach.batch_id == batch.id, Outreach.sent_at.is_(None))).all():
-            draft.batch_id = None
-    db.commit()
-    return {"id": batch.id, "status": batch.status}
-
-
+# Declared before control_batch: routes match in order, and
+# /batches/{batch_id}/{action} would otherwise swallow "dispatch".
 @router.post("/batches/{batch_id}/dispatch")
 def dispatch_batch(batch_id: str, db: Session = Depends(get_db)):
     batch = db.get(OutreachBatch, batch_id)
     if not batch:
         raise HTTPException(404, "Batch not found")
+    if batch.status != "ACTIVE":
+        raise HTTPException(409, f"Only active batches send. This batch is {batch.status.lower()}.")
     settings = get_settings()
     try:
         local_now = datetime.now(ZoneInfo(batch.timezone))
@@ -255,7 +242,7 @@ def dispatch_batch(batch_id: str, db: Session = Depends(get_db)):
         raise HTTPException(422, "Batch has an invalid IANA timezone.")
     hour = local_now.hour
     if hour < batch.send_hour_start or hour >= batch.send_hour_end:
-        raise HTTPException(422, f"This batch sends only between {batch.send_hour_start}:00 and {batch.send_hour_end}:00 local server time.")
+        raise HTTPException(422, f"This batch sends only between {batch.send_hour_start}:00 and {batch.send_hour_end}:00 in the batch's timezone ({batch.timezone}).")
     start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc)
     already_sent = db.scalar(select(func.count()).select_from(Outreach).where(Outreach.sent_at >= start)) or 0
     remaining = max(0, settings.outreach_daily_send_limit - already_sent)
@@ -280,3 +267,20 @@ def dispatch_batch(batch_id: str, db: Session = Depends(get_db)):
     batch.status = "COMPLETE" if pending == 0 else "ACTIVE"
     db.commit()
     return {"sent": sent, "failed": failed, "remaining_daily_capacity": max(0, remaining - sent)}
+
+
+@router.post("/batches/{batch_id}/{action}")
+def control_batch(batch_id: str, action: str, db: Session = Depends(get_db)):
+    if action not in {"pause", "resume", "cancel"}:
+        raise HTTPException(404, "Unknown batch action")
+    batch = db.get(OutreachBatch, batch_id)
+    if not batch:
+        raise HTTPException(404, "Batch not found")
+    if action == "pause": batch.status = "PAUSED"
+    elif action == "resume": batch.status = "ACTIVE"
+    else:
+        batch.status = "CANCELLED"
+        for draft in db.scalars(select(Outreach).where(Outreach.batch_id == batch.id, Outreach.sent_at.is_(None))).all():
+            draft.batch_id = None
+    db.commit()
+    return {"id": batch.id, "status": batch.status}
