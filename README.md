@@ -1,5 +1,7 @@
 # ProspectOS
 
+**Live demo:** https://prospectos-blond.vercel.app/prospects (read-only demo mode, sample data)
+
 Internal AI-powered business opportunity intelligence tool for a two-person
 web development + AI automation business. Finds local businesses, audits
 their websites, scores commercial opportunity, and drafts personalized
