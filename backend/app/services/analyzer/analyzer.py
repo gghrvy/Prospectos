@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -18,14 +18,39 @@ _EMAIL_DOMAIN_DENYLIST = (
     "sentry.io", "wixpress.com", "example.com", "example.org", "godaddy.com",
     "w3.org", "schema.org", "wordpress.org", "gstatic.com", "google.com",
     "googleapis.com", "cloudflare.com", "sentry-next.wixpress.com",
+    # Placeholder / theme-demo domains seen on real small-business sites.
+    "email.com", "domain.com", "yourdomain.com", "yoursite.com", "website.com",
+    "company.com", "elementuikit.com", "latofonts.com", "local",
 )
+# Local parts that are template placeholders, never a real inbox.
+_PLACEHOLDER_LOCAL_PARTS = {"johndoe", "janedoe", "john.doe", "user", "name", "you", "your", "email", "test"}
+# Font/theme author addresses that ship inside bundled CSS/JS on many sites.
+_KNOWN_JUNK_EMAILS = {"impallari@gmail.com", "hello@rfuenzalida.com", "team@latofonts.com", "info@romeo.surf"}
+# Shared inboxes a small business actually reads; preferred over personal ones.
+_ROLE_LOCAL_PARTS = ("info", "office", "contact", "hello", "service", "admin", "sales", "team", "dispatch", "support")
+_FREE_MAIL_DOMAINS = ("gmail.com", "aol.com", "yahoo.com", "outlook.com", "hotmail.com", "comcast.net", "icloud.com")
 
 _LIVE_CHAT_SIGNALS = [
     "tawk.to", "intercom", "drift.com", "crisp.chat", "zendesk", "livechatinc", "tidio",
     "recent conversations", "we'll respond as soon as we can",
+    "podium.com", "birdeye", "leadconnector", "hs-scripts.com", "smith.ai", "getweave", "webchat",
 ]
 _AI_CHATBOT_SIGNALS = ["chatbase", "voiceflow", "chatbot", "ai assistant", "aichat", "botpress", "landbot"]
-_BOOKING_SIGNALS = ["calendly", "book now", "schedule an appointment", "acuityscheduling", "book online", "bookings"]
+_BOOKING_SIGNALS = [
+    "calendly", "book now", "schedule an appointment", "acuityscheduling", "book online", "bookings",
+    # Field-service and dental scheduling platforms that embed on the site.
+    "servicetitan", "schedulingengine", "housecallpro", "getjobber", "clienthub.getjobber",
+    "nexhealth", "localmed", "zocdoc", "flexbook", "modento", "schedule online", "schedule service",
+]
+# Signs the domain is parked, a host's default page, or a bot wall rather than the business site.
+_PARKED_SIGNALS = [
+    "domain is for sale", "buy this domain", "this domain may be for sale", "parked free",
+    "ipage.com", "web hosting provided by", "future home of", "coming soon", "under construction",
+    "just a moment...", "attention required! | cloudflare",
+]
+# Unfilled template variables left live on the page (e.g. "[dr_type] [city]", "Dental Company Name").
+_TEMPLATE_PLACEHOLDER_RE = re.compile(r"\[(?:[a-z]+_)+[a-z]+\]|\[(?:city|state|company|phone|name)\]|company name here|dental company name|lorem ipsum", re.IGNORECASE)
+_COPYRIGHT_YEAR_RE = re.compile(r"(?:©|&copy;|copyright)\s*(?:\d{4}\s*[-–]\s*)?(\d{4})", re.IGNORECASE)
 _FAQ_SIGNALS = ["faq", "frequently asked questions"]
 _ANALYTICS_SIGNALS = ["google-analytics.com", "googletagmanager.com", "gtag(", "plausible.io"]
 _SOCIAL_DOMAINS = ["facebook.com", "instagram.com", "twitter.com", "x.com", "linkedin.com", "tiktok.com"]
@@ -56,6 +81,13 @@ class AnalysisFindings:
     # The actual email address found on the site (mailto: link or plain
     # text), if any -- never guessed, only what's literally on the page.
     discovered_email: str | None = None
+    # Every plausible business email found, best first (see _rank_email).
+    candidate_emails: list[str] = field(default_factory=list)
+
+    # Outreach-worthy defects a human would notice on the page.
+    is_parked_or_placeholder: bool = False
+    template_placeholders: list[str] = field(default_factory=list)
+    copyright_year: int | None = None
 
     broken_link_count: int = 0
 
@@ -75,22 +107,58 @@ def _page_has_form(page: PageResult) -> bool:
 
 
 def _looks_like_real_email(email: str) -> bool:
-    domain = email.rsplit("@", 1)[-1].lower()
+    email = email.lower().rstrip(".")
+    if email in _KNOWN_JUNK_EMAILS:
+        return False
+    local, _, domain = email.rpartition("@")
+    if local in _PLACEHOLDER_LOCAL_PARTS:
+        return False
+    if re.search(r"\.(png|jpe?g|gif|svg|webp|css|js)$", email):
+        return False  # retina image names like logo@2x.png
     return not any(domain == d or domain.endswith("." + d) for d in _EMAIL_DOMAIN_DENYLIST)
 
 
-def _extract_email(pages: list[PageResult]) -> str | None:
-    """Best-effort real email extraction: mailto: links first (highest
-    confidence), then a plain regex scan of visible text, checking a
-    contact/about page before the rest if one was crawled. Only ever
-    returns what's literally present on a crawled page -- never guessed
-    or fabricated (spec section 11)."""
-    ordered = sorted(
-        pages,
-        key=lambda p: 0 if p.url and any(k in p.url.lower() for k in ("contact", "about")) else 1,
-    )
+def _site_root(url: str) -> str:
+    host = urlparse(url).netloc.lower().split(":")[0]
+    host = host[4:] if host.startswith("www.") else host
+    return ".".join(host.split(".")[-2:])
 
-    for page in ordered:
+
+def _rank_email(email: str, site_root: str, from_mailto: bool) -> tuple:
+    """Lower sorts first. Prefers an address on the business's own domain,
+    then a shared role inbox (info@, office@), then a free-mail address the
+    owner clearly uses, and finally anything else (often a web agency's
+    address left in the footer). mailto: links break ties."""
+    local, _, domain = email.partition("@")
+    on_site_domain = domain == site_root or domain.endswith("." + site_root)
+    is_role = local.split(".")[0] in _ROLE_LOCAL_PARTS
+    is_free_mail = domain in _FREE_MAIL_DOMAINS
+    if on_site_domain:
+        tier = 0 if is_role else 1
+    elif is_free_mail:
+        tier = 2
+    else:
+        tier = 3
+    return (tier, 0 if from_mailto else 1)
+
+
+def _visible_text(html: str) -> str:
+    # Drop <script>/<style>: bundled fonts and themes embed their authors'
+    # emails there, which used to surface as the "business" address.
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    return soup.get_text(" ", strip=True)
+
+
+def _extract_emails(pages: list[PageResult], start_url: str) -> list[str]:
+    """Every real email literally present on a crawled page (mailto: links
+    and visible text), ranked best-first. Never guessed or fabricated
+    (spec section 11)."""
+    site_root = _site_root(start_url) if start_url else ""
+    found: dict[str, bool] = {}  # email -> seen in a mailto: link
+
+    for page in pages:
         if not page.html:
             continue
         soup = BeautifulSoup(page.html, "html.parser")
@@ -98,20 +166,30 @@ def _extract_email(pages: list[PageResult]) -> str | None:
             href = link["href"]
             if not href.lower().startswith("mailto:"):
                 continue
-            candidate = href[len("mailto:"):].split("?")[0].strip()
-            match = EMAIL_RE.search(candidate)
+            match = EMAIL_RE.search(href[len("mailto:"):].split("?")[0].strip())
             if match and _looks_like_real_email(match.group(0)):
-                return match.group(0).lower()
+                found[match.group(0).lower().rstrip(".")] = True
+        for match in EMAIL_RE.finditer(_visible_text(page.html)):
+            email = match.group(0).lower().rstrip(".")
+            if _looks_like_real_email(email):
+                found.setdefault(email, False)
 
-    for page in ordered:
-        if not page.html:
-            continue
-        text = BeautifulSoup(page.html, "html.parser").get_text(" ", strip=True)
-        for match in EMAIL_RE.finditer(text):
-            if _looks_like_real_email(match.group(0)):
-                return match.group(0).lower()
+    return sorted(found, key=lambda e: _rank_email(e, site_root, found[e]))
 
-    return None
+
+def _extract_email(pages: list[PageResult], start_url: str = "") -> str | None:
+    """Best single address to contact (see _extract_emails)."""
+    emails = _extract_emails(pages, start_url)
+    return emails[0] if emails else None
+
+
+def _detect_page_defects(findings: "AnalysisFindings", homepage_html: str, pages: list[PageResult]) -> None:
+    home_lower = homepage_html.lower()
+    combined_text = " ".join(_visible_text(p.html) for p in pages if p.html)
+    findings.is_parked_or_placeholder = any(sig in home_lower for sig in _PARKED_SIGNALS) and len(home_lower) < 15_000
+    findings.template_placeholders = sorted({m.group(0) for m in _TEMPLATE_PLACEHOLDER_RE.finditer(combined_text)})[:5]
+    years = [int(y) for y in _COPYRIGHT_YEAR_RE.findall(combined_text) if 1995 <= int(y) <= 2100]
+    findings.copyright_year = max(years) if years else None
 
 
 def analyze_crawl(crawl_result: CrawlResult) -> AnalysisFindings:
@@ -151,7 +229,8 @@ def analyze_crawl(crawl_result: CrawlResult) -> AnalysisFindings:
     findings.has_viewport = home_soup.find("meta", attrs={"name": "viewport"}) is not None
     findings.has_contact_form = any(_page_has_form(p) for p in crawl_result.pages)
 
-    findings.discovered_email = _extract_email(crawl_result.pages)
+    findings.candidate_emails = _extract_emails(crawl_result.pages, crawl_result.start_url)
+    findings.discovered_email = findings.candidate_emails[0] if findings.candidate_emails else None
     findings.has_email = findings.discovered_email is not None or bool(EMAIL_RE.search(combined_text_lower)) or "mailto:" in combined_html_lower
     findings.has_phone = "tel:" in combined_html_lower or bool(PHONE_RE.search(combined_text_lower))
 
@@ -162,6 +241,7 @@ def analyze_crawl(crawl_result: CrawlResult) -> AnalysisFindings:
     findings.has_whatsapp = "wa.me/" in combined_html_lower or "api.whatsapp.com" in combined_html_lower
     findings.has_social_links = any(domain in combined_html_lower for domain in _SOCIAL_DOMAINS)
     findings.has_analytics = any(sig in combined_html_lower for sig in _ANALYTICS_SIGNALS)
+    _detect_page_defects(findings, homepage.html, crawl_result.pages)
 
     findings.mobile_score = _score_mobile(findings)
     findings.technical_score = _score_technical(findings)

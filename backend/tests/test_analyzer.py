@@ -126,3 +126,54 @@ def test_quality_category_thresholds():
     assert quality_category_for_score(45) == "WEAK"
     assert quality_category_for_score(25) == "POOR"
     assert quality_category_for_score(5) == "CRITICAL"
+
+
+def _crawl(url: str, *pages: tuple[str, str]) -> CrawlResult:
+    result = CrawlResult(start_url=url)
+    result.pages = [PageResult(url=u, status_code=200, html=h, depth=i) for i, (u, h) in enumerate(pages)]
+    return result
+
+
+def test_email_ranking_prefers_business_domain_and_skips_junk():
+    html = """<html><head><style>/* font by impallari@gmail.com */</style></head><body>
+    <p>Designed by rwilson@agencymedia.com</p>
+    <p>Example: johndoe@email.com</p>
+    <img src="logo@2x.png">
+    <p>Owner: bob@coolairhvac.com</p>
+    <a href="mailto:info@coolairhvac.com">Email us</a>
+    </body></html>"""
+    findings = analyze_crawl(_crawl("https://www.coolairhvac.com", ("https://www.coolairhvac.com", html)))
+
+    assert findings.discovered_email == "info@coolairhvac.com"
+    assert findings.candidate_emails[:2] == ["info@coolairhvac.com", "bob@coolairhvac.com"]
+    assert "impallari@gmail.com" not in findings.candidate_emails
+    assert "johndoe@email.com" not in findings.candidate_emails
+    assert findings.candidate_emails[-1] == "rwilson@agencymedia.com"
+
+
+def test_free_mail_owner_address_beats_agency_address():
+    html = "<p>Site by web@agency.io</p><p>Call or email camshvac1@gmail.com</p>"
+    findings = analyze_crawl(_crawl("https://camsac.com", ("https://camsac.com", html)))
+    assert findings.discovered_email == "camshvac1@gmail.com"
+
+
+def test_detects_field_service_booking_and_podium_chat():
+    html = '<script src="https://static.servicetitan.com/webscheduler.js"></script><script src="https://connect.podium.com/widget.js"></script>'
+    findings = analyze_crawl(_crawl("https://x.com", ("https://x.com", f"<html><body>{html}</body></html>")))
+    assert findings.has_booking is True
+    assert findings.has_live_chat is True
+
+
+def test_detects_template_placeholders_and_copyright_year():
+    html = "<html><body><p>Your [dr_type] in [city].</p><footer>© Copyright 2021 Dental Company Name.</footer></body></html>"
+    findings = analyze_crawl(_crawl("https://westside.com", ("https://westside.com", html)))
+    assert "[dr_type]" in findings.template_placeholders
+    assert "Dental Company Name" in findings.template_placeholders
+    assert findings.copyright_year == 2021
+
+
+def test_detects_parked_host_page_but_not_normal_homepage():
+    parked = "<html><head><title>iPage</title></head><body>Web hosting provided by iPage.com</body></html>"
+    assert analyze_crawl(_crawl("http://c2h.com", ("http://c2h.com", parked))).is_parked_or_placeholder is True
+    normal = "<html><body><a href='/'>Homepage</a><p>New location coming soon to Tampa!</p>" + "x" * 20000 + "</body></html>"
+    assert analyze_crawl(_crawl("https://ok.com", ("https://ok.com", normal))).is_parked_or_placeholder is False
