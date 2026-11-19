@@ -36,12 +36,25 @@ _LIVE_CHAT_SIGNALS = [
     "podium.com", "birdeye", "leadconnector", "hs-scripts.com", "smith.ai", "getweave", "webchat",
 ]
 _AI_CHATBOT_SIGNALS = ["chatbase", "voiceflow", "chatbot", "ai assistant", "aichat", "botpress", "landbot"]
-_BOOKING_SIGNALS = [
-    "calendly", "book now", "schedule an appointment", "acuityscheduling", "book online", "bookings",
-    # Field-service and dental scheduling platforms that embed on the site.
-    "servicetitan", "schedulingengine", "housecallpro", "getjobber", "clienthub.getjobber",
-    "nexhealth", "localmed", "zocdoc", "flexbook", "modento", "schedule online", "schedule service",
+# Embedded scheduling tools: matched anywhere in the HTML (script/iframe/link URLs).
+_BOOKING_PLATFORM_SIGNALS = [
+    "calendly.com", "acuityscheduling", "servicetitan", "schedulingengine", "housecallpro",
+    "getjobber", "nexhealth", "localmed", "zocdoc", "flexbook", "modento", "setmore", "squareup.com/appointments",
+    "booksy", "vagaro", "simplybook", "youcanbook.me", "tidycal",
 ]
+# Booking phrases only count when they're the visible text of a link or button --
+# not page-builder markup like GoDaddy's hidden "membership-bookings" menu item,
+# and not a plain "call to book now" sentence.
+_BLOCK_STATUS_CODES = {401, 403, 429, 503}
+_CHALLENGE_SIGNALS = [
+    "cf-chl", "challenge-platform", "just a moment...", "attention required! | cloudflare",
+    "cf-browser-verification", "_incapsula_resource", "px-captcha", "ddos protection by",
+    "sucuri website firewall", "access denied</title>", "request unsuccessful. incapsula",
+]
+_BOOKING_HREF_RE = re.compile(r"book|schedul|appointment|reserv", re.I)
+
+_BOOKING_CTA_PHRASES = ["book now", "book online", "book an appointment", "schedule online", "schedule service",
+                        "schedule an appointment", "request an appointment", "schedule now", "book a service"]
 # Signs the domain is parked, a host's default page, or a bot wall rather than the business site.
 _PARKED_SIGNALS = [
     "domain is for sale", "buy this domain", "this domain may be for sale", "parked free",
@@ -71,6 +84,7 @@ class AnalysisFindings:
     has_email: bool = False
     has_phone: bool = False
     has_booking: bool = False
+    blocked_by_bot_protection: bool = False
     has_faq: bool = False
     has_live_chat: bool = False
     has_ai_chatbot: bool = False
@@ -183,6 +197,33 @@ def _extract_email(pages: list[PageResult], start_url: str = "") -> str | None:
     return emails[0] if emails else None
 
 
+def _detect_booking(pages: list[PageResult], combined_html_lower: str) -> bool:
+    if any(sig in combined_html_lower for sig in _BOOKING_PLATFORM_SIGNALS):
+        return True
+    for page in pages:
+        if not page.html:
+            continue
+        soup = BeautifulSoup(page.html, "html.parser")
+        for el in soup.find_all(["a", "button"]):
+            label = el.get_text(" ", strip=True).lower()
+            if not label or len(label) > 40:
+                continue
+            href = (el.get("href") or "").lower()
+            if href.startswith(("tel:", "mailto:")):
+                continue  # "Book now: call us" is a phone CTA, not online booking
+            if not any(phrase in label for phrase in _BOOKING_CTA_PHRASES):
+                continue
+            # A "Book now" that just links to the contact form or another
+            # ordinary page is a request form, not online booking. Count it
+            # only when it is a widget trigger (button, "#", javascript:) or
+            # its destination itself is a booking/scheduling page.
+            if el.name == "button" or not href or href.startswith(("#", "javascript:")):
+                return True
+            if _BOOKING_HREF_RE.search(urlparse(href).path or "") or _BOOKING_HREF_RE.search(urlparse(href).netloc or ""):
+                return True
+    return False
+
+
 def _detect_page_defects(findings: "AnalysisFindings", homepage_html: str, pages: list[PageResult]) -> None:
     home_lower = homepage_html.lower()
     combined_text = " ".join(_visible_text(p.html) for p in pages if p.html)
@@ -190,6 +231,18 @@ def _detect_page_defects(findings: "AnalysisFindings", homepage_html: str, pages
     findings.template_placeholders = sorted({m.group(0) for m in _TEMPLATE_PLACEHOLDER_RE.finditer(combined_text)})[:5]
     years = [int(y) for y in _COPYRIGHT_YEAR_RE.findall(combined_text) if 1995 <= int(y) <= 2100]
     findings.copyright_year = max(years) if years else None
+
+
+def _looks_blocked(page: PageResult | None) -> bool:
+    """403/429-style refusals and bot-challenge interstitials say nothing
+    about the site's real quality; scoring them as a broken site produces
+    false 'your website is down' pitches."""
+    if page is None:
+        return False
+    if page.status_code in _BLOCK_STATUS_CODES:
+        return True
+    html = (page.html or "").lower()
+    return bool(html) and len(html) < 30_000 and any(sig in html for sig in _CHALLENGE_SIGNALS)
 
 
 def analyze_crawl(crawl_result: CrawlResult) -> AnalysisFindings:
@@ -204,6 +257,11 @@ def analyze_crawl(crawl_result: CrawlResult) -> AnalysisFindings:
     findings.https_enabled = urlparse(crawl_result.start_url).scheme == "https"
 
     homepage = crawl_result.homepage
+    if crawl_result.blocked_by_robots or _looks_blocked(homepage):
+        findings.http_status = homepage.status_code if homepage else None
+        findings.blocked_by_bot_protection = True
+        return findings  # quality unknown: audit_pipeline marks it BLOCKED, not CRITICAL
+
     if homepage is None or not homepage.html:
         findings.http_status = homepage.status_code if homepage else None
         return findings  # unreachable site: every score stays 0 -> CRITICAL
@@ -234,7 +292,7 @@ def analyze_crawl(crawl_result: CrawlResult) -> AnalysisFindings:
     findings.has_email = findings.discovered_email is not None or bool(EMAIL_RE.search(combined_text_lower)) or "mailto:" in combined_html_lower
     findings.has_phone = "tel:" in combined_html_lower or bool(PHONE_RE.search(combined_text_lower))
 
-    findings.has_booking = any(sig in combined_html_lower for sig in _BOOKING_SIGNALS)
+    findings.has_booking = _detect_booking(crawl_result.pages, combined_html_lower)
     findings.has_faq = any(sig in combined_text_lower for sig in _FAQ_SIGNALS)
     findings.has_live_chat = any(sig in combined_html_lower for sig in _LIVE_CHAT_SIGNALS)
     findings.has_ai_chatbot = any(sig in combined_html_lower for sig in _AI_CHATBOT_SIGNALS)

@@ -51,3 +51,13 @@ def test_recommend_package_custom_ai_automation_wins():
 
 def test_recommend_package_low_opportunity_is_standard():
     assert recommend_package(["MOBILE_IMPROVEMENT"], overall_opportunity_score=20) == "STANDARD"
+
+
+def test_blocked_audit_claims_no_opportunity():
+    from app.services.audit_pipeline import blocked_audit_data
+
+    data = blocked_audit_data("https://smile360.com", 403)
+    assert data["quality_category"] == "BLOCKED"
+    assert data["overall_opportunity_score"] == 0
+    assert data["opportunity_types"] == []
+    assert "403" in data["opportunity_reasons"][0]

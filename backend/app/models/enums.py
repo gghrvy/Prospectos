@@ -14,6 +14,7 @@ class QualityCategory(str, enum.Enum):
     WEAK = "WEAK"
     POOR = "POOR"
     CRITICAL = "CRITICAL"
+    BLOCKED = "BLOCKED"  # site refused automated checks; quality unknown, review by hand
 
 
 class OpportunityType(str, enum.Enum):

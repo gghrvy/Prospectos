@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # Get a key at https://www.geoapify.com (~3000 free requests/day).
     # Discovery works fine without this — OSM is tried first either way.
     geoapify_api_key: str | None = None
+    # Optional: Google Maps discovery through Apify (source="google_maps").
+    # Free Apify plan, no card: the budget guard refuses any search that
+    # could push this month's usage past apify_monthly_budget_usd.
+    apify_token: str | None = None
+    apify_monthly_budget_usd: float = 4.5
+    apify_max_results: int = 50
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_oauth_redirect_uri: str = "http://localhost:8000/api/gmail/callback"

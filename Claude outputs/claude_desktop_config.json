@@ -1,0 +1,365 @@
+{
+  "mcpServers": {
+    "godvault": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:\\GodVault\\GodVault",
+        "C:\\Book"
+      ]
+    },
+    "prospectos": {
+      "command": "C:\\Codes\\ProspectAi\\backend\\.venv-mcp\\Scripts\\python.exe",
+      "args": [
+        "C:\\Codes\\ProspectAi\\backend\\mcp_server\\prospectos_mcp.py"
+      ],
+      "env": {
+        "PROSPECTOS_API_URL": "http://localhost:8000"
+      }
+    }
+  },
+  "coworkUserFilesPath": "C:\\Users\\Harvy Monte de Ramos\\Claude",
+  "preferences": {
+    "coworkBrowserToolsEnabled": true,
+    "coworkPreferredBrowser": "built_in",
+    "launchPreviewPersistedWorkspaces": [
+      "cowork-shared"
+    ],
+    "launchPreviewSessionScopedSessions": [],
+    "launchPreviewAllowedOrigins": [
+      "https://ph.jobstreet.com",
+      "https://linkedin.com",
+      "https://ycombinator.com",
+      "https://wellfound.com",
+      "https://onlinejobs.ph",
+      "https://hn.algolia.com",
+      "https://remoteok.com",
+      "https://jobicy.com",
+      "https://weworkremotely.com",
+      "https://kalibrr.com",
+      "https://api.ashbyhq.com",
+      "https://api.lever.co",
+      "https://boards-api.greenhouse.io",
+      "https://himalayas.app",
+      "https://remotive.com",
+      "https://arcanys.com",
+      "https://fullscale.io",
+      "https://startechup.com",
+      "https://sunasterisk-ph.com",
+      "https://readyon.ai",
+      "https://offshorly.com",
+      "https://sprobe.com",
+      "https://innovuze.com",
+      "https://teamified.com",
+      "https://panoptyc.com",
+      "https://urrly.com",
+      "https://pearltalent.com",
+      "https://remoteraven.com",
+      "https://foundryforgood.com",
+      "https://api.github.com",
+      "https://careers.searchatlas.com",
+      "https://github.com"
+    ],
+    "remoteSessionFolderGrants": {},
+    "remoteChatFolderGrants": {
+      "83b2fd38-a0b5-4f85-beb2-b1ee42c8f85e": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\Book"
+        ]
+      },
+      "fdc51aee-6c67-449d-a0e4-1e6c460a1b9f": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\Codes"
+        ]
+      },
+      "9e87fb40-699e-4112-be1d-c9a2fd2be051": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\Users\\Harvy Monte de Ramos\\Downloads",
+          "C:\\Codes\\Streaming"
+        ]
+      },
+      "40b1c94c-b96c-40b7-8b05-54dbc1d164fb": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\Book",
+          "C:\\Book\\Revised"
+        ]
+      },
+      "59fa5fbe-69a7-41f6-9391-e51c437e4336": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\Codes\\ARIA"
+        ]
+      },
+      "f7fa2f71-ae11-4262-b57d-75f8e86732e8": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\GodVault",
+          "C:\\Book"
+        ]
+      },
+      "ed4ac50b-e7dd-431d-9bf6-fc88071a406b": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\GodVault\\GodVault"
+        ]
+      },
+      "9ae6517d-505b-4821-bcca-63112ab8bea1": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\Portfolio",
+          "C:\\Important",
+          "C:\\GodVault"
+        ]
+      },
+      "7f181091-6dac-4621-a9b1-efdbe3a56276": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\GodVault"
+        ]
+      },
+      "55839665-60bf-444c-aea9-eaae8057debf": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\roblox\\Capys-AA-Macro-v4.8"
+        ]
+      },
+      "7d083d93-6c5e-4a73-96bd-ec453433ce9c": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\GodVault\\GodVault\\04 Job Hunt",
+          "C:\\Users\\Harvy Monte de Ramos\\Downloads"
+        ]
+      },
+      "1edda80c-2fbd-49f7-ba05-c23aed29a07c": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\"
+        ]
+      },
+      "6edff5e4-ed45-410e-8e69-7f2b0a759e30": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "folders": [
+          "C:\\Codes\\ProspectAi"
+        ]
+      }
+    },
+    "remoteChatFolderAccessReports": {
+      "83b2fd38-a0b5-4f85-beb2-b1ee42c8f85e": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1792822773711,
+        "digest": "tvCRiAn4YqXESDdpW5rYN8",
+        "settled": true
+      },
+      "fdc51aee-6c67-449d-a0e4-1e6c460a1b9f": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1792834728792,
+        "digest": "SFism62t7m4KCeDHjgUlBq",
+        "settled": true
+      },
+      "9e87fb40-699e-4112-be1d-c9a2fd2be051": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1792836503465,
+        "digest": "5q1v9V4W7MsDJS0Egih6dU",
+        "settled": true
+      },
+      "40b1c94c-b96c-40b7-8b05-54dbc1d164fb": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1792843001818,
+        "digest": "oKlBb3JmXJ9X9pX1urqOJ4",
+        "settled": true
+      },
+      "59fa5fbe-69a7-41f6-9391-e51c437e4336": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1793177725232,
+        "digest": "Xpfh4Ayq47HiCcIMqz45Eo",
+        "settled": true
+      },
+      "f7fa2f71-ae11-4262-b57d-75f8e86732e8": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1793773775204,
+        "digest": "W1cihjGBmq8E12kxcxS66v",
+        "settled": true
+      },
+      "ed4ac50b-e7dd-431d-9bf6-fc88071a406b": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1793800047999,
+        "digest": "nIR2zMv1-XJyaz3kDghHsd",
+        "settled": true
+      },
+      "9ae6517d-505b-4821-bcca-63112ab8bea1": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1793858157744,
+        "digest": "IQKwtoAobHUFci4XJjgUtx",
+        "settled": true
+      },
+      "7f181091-6dac-4621-a9b1-efdbe3a56276": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1793858495834,
+        "digest": "IX5a0f9m8aVRxs-EeHWZ9X",
+        "settled": true
+      },
+      "55839665-60bf-444c-aea9-eaae8057debf": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1794295253857,
+        "digest": "8TA5WZr5_d-TYFADkN4YYX",
+        "settled": true
+      },
+      "7d083d93-6c5e-4a73-96bd-ec453433ce9c": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1794548215847,
+        "digest": "W2hcsPklmVkgTw8Uat2XhQ",
+        "settled": true
+      },
+      "1edda80c-2fbd-49f7-ba05-c23aed29a07c": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1794629943920,
+        "digest": "nfRjz3u7NxhIS_8G-ULpyF",
+        "settled": true
+      },
+      "6edff5e4-ed45-410e-8e69-7f2b0a759e30": {
+        "orgUuid": "15941f10-34a0-4b18-9c3b-be51daa180a3",
+        "accountUuid": "8d0db7a4-0559-4116-a728-8fdd8f9973b6",
+        "generation": 1794973948550,
+        "digest": "1GcBK5L2MuXA-EzaSjbTEQ",
+        "settled": true
+      }
+    },
+    "coworkLegacyRootGrantsPruned": true,
+    "coworkHasBoundRoutine": {
+      "15941f10-34a0-4b18-9c3b-be51daa180a3": true
+    },
+    "coworkScheduledTasksEnabled": true,
+    "coworkHipaaRestricted": false,
+    "orgWorkAcrossAppsDisabled": false,
+    "ccdScheduledTasksEnabled": true,
+    "httpCacheZstdLatched": true,
+    "sidebarMode": "chat",
+    "bypassPermissionsGateByAccount": {
+      "8d0db7a4-0559-4116-a728-8fdd8f9973b6": false
+    },
+    "coworkWebSearchEnabled": true,
+    "coworkModelAutoFallbackByAccount": {
+      "8d0db7a4-0559-4116-a728-8fdd8f9973b6": true
+    },
+    "chicagoEnabled": true,
+    "remoteToolsDeviceName": "laptop-4huv8134",
+    "epitaxyPrefs": {
+      "starred-local-code-sessions": [],
+      "starred-cowork-spaces": [],
+      "starred-session-groups": [],
+      "dframe-local-slice": {
+        "pinnedOrder": [],
+        "homeProjectsPinnedOrder": []
+      },
+      "ccd-sessions-filter": {
+        "state": {
+          "selectedProjects": []
+        },
+        "version": 0
+      },
+      "desktop-frame.paneStore.v1": {
+        "state": {
+          "extraPanesByMode": {},
+          "colWeightsByMode": {},
+          "rowSplit": 0.5,
+          "draftNonce": 0,
+          "lastPrimaryCodeSession": null
+        },
+        "version": 4
+      },
+      "dframe-group-scopes": {},
+      "starred-local-routines": [],
+      "dframe-code-sections": {
+        "8d0db7a4-0559-4116-a728-8fdd8f9973b6/15941f10-34a0-4b18-9c3b-be51daa180a3": {
+          "sections": [
+            {
+              "id": "pinned",
+              "kind": "pinned",
+              "v": 2,
+              "name": "",
+              "order": 0,
+              "sortBy": "recency",
+              "ascending": false,
+              "show": {
+                "metadata": false,
+                "emptyGroups": false,
+                "sideChats": false,
+                "slack": true
+              },
+              "collapsed": false,
+              "shown": true
+            },
+            {
+              "id": "routines",
+              "kind": "routines",
+              "v": 2,
+              "name": "",
+              "order": 1,
+              "sortBy": "recency",
+              "ascending": false,
+              "show": {
+                "metadata": false,
+                "emptyGroups": false,
+                "sideChats": false,
+                "slack": true
+              },
+              "collapsed": true,
+              "shown": false
+            },
+            {
+              "id": "sessions",
+              "kind": "sessions",
+              "v": 2,
+              "name": "",
+              "order": 2,
+              "sortBy": "recency",
+              "ascending": false,
+              "show": {
+                "metadata": false,
+                "emptyGroups": false,
+                "sideChats": false,
+                "slack": true
+              },
+              "collapsed": false,
+              "shown": true
+            }
+          ],
+          "migratedFrom": 1,
+          "prefsSeeded": true
+        }
+      },
+      "epitaxy-transcript-links-in-preview": false,
+      "epitaxy-transcript-links-chooser-seen": true
+    }
+  }
+}

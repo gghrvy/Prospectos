@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, model_validator
 
 from app.services.discovery.base import DiscoveredBusiness
@@ -15,6 +17,8 @@ class OSMSearchRequest(BaseModel):
     radius_km: float = 5.0
     limit: int = 50
     save: bool = False
+    # "openstreetmap" (free, default) or "google_maps" (Apify, budget-guarded).
+    source: Literal["openstreetmap", "google_maps"] = "openstreetmap"
     # Map-based search: an exact clicked point, skipping city geocoding.
     latitude: float | None = None
     longitude: float | None = None

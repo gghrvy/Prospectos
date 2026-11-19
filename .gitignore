@@ -43,3 +43,4 @@ backend/data/screenshots/
 # Local tool state (personal permissions, other agents)
 .claude/settings.local.json
 .kilo/
+.venv-mcp/

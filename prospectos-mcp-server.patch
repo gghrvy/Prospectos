@@ -1,0 +1,357 @@
+diff --git a/.gitignore b/.gitignore
+index dd5db2b..1c9dd02 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -43,3 +43,4 @@ backend/data/screenshots/
+ # Local tool state (personal permissions, other agents)
+ .claude/settings.local.json
+ .kilo/
++.venv-mcp/
+diff --git a/backend/mcp_server/__init__.py b/backend/mcp_server/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/backend/mcp_server/prospectos_mcp.py b/backend/mcp_server/prospectos_mcp.py
+new file mode 100644
+index 0000000..117f2a4
+--- /dev/null
++++ b/backend/mcp_server/prospectos_mcp.py
+@@ -0,0 +1,210 @@
++"""ProspectOS MCP server.
++
++Lets Claude (Claude Desktop, Claude Code, or any MCP client) drive ProspectOS
++through its existing REST API: find businesses, audit their sites, draft
++outreach, approve and send emails, sync replies, and move leads through the
++pipeline.
++
++It talks to the running FastAPI backend over HTTP, so every rule the API
++enforces (demo mode, dedup, approval before send, rate-limited batches)
++still applies. Nothing here touches the database directly.
++
++Run (stdio, for Claude Desktop / Claude Code):
++    python -m mcp_server.prospectos_mcp
++
++Env:
++    PROSPECTOS_API_URL   default http://localhost:8000
++"""
++
++from __future__ import annotations
++
++import os
++from typing import Any
++
++import httpx
++from mcp.server.mcpserver import MCPServer
++from mcp.types import ToolAnnotations
++
++API_URL = os.environ.get("PROSPECTOS_API_URL", "http://localhost:8000").rstrip("/")
++TIMEOUT = httpx.Timeout(120.0, connect=10.0)  # audits crawl live sites; give them room
++
++LEAD_STATUSES = (
++    "NEW", "AUDITED", "QUALIFIED", "OUTREACH_READY", "CONTACTED", "FOLLOW_UP", "REPLIED",
++    "INTERESTED", "CONCEPT_SENT", "DISCUSSION", "DEMO_SENT", "CALL_BOOKED", "PROPOSAL",
++    "WON", "LOST", "NOT_INTERESTED",
++)
++
++READ = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
++WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
++EXTERNAL = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
++SENDS_EMAIL = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True)
++
++server = MCPServer(
++    name="prospectos",
++    title="ProspectOS",
++    instructions=(
++        "ProspectOS finds local businesses, audits their websites, drafts outreach and sends "
++        "approved emails through the user's Gmail. Typical flow: discover_businesses -> "
++        "audit_prospect -> draft_outreach -> show the draft to the user -> approve_outreach -> "
++        "send_outreach(confirm=True) only after the user explicitly says to send. Never send "
++        "without the user's go-ahead in this conversation. Use sync_replies before reporting on "
++        "replies, and set_lead_status to keep the pipeline current."
++    ),
++)
++
++_client: httpx.Client | None = None
++
++
++def _http() -> httpx.Client:
++    global _client
++    if _client is None:
++        _client = httpx.Client(base_url=API_URL, timeout=TIMEOUT)
++    return _client
++
++
++def set_client(client: httpx.Client) -> None:
++    """Test hook: swap in a client with a mock transport."""
++    global _client
++    _client = client
++
++
++def _call(method: str, path: str, *, params: dict | None = None, json: Any = None) -> Any:
++    params = {k: v for k, v in (params or {}).items() if v is not None}
++    try:
++        response = _http().request(method, path, params=params, json=json)
++    except httpx.ConnectError:
++        return {"error": f"Can't reach the ProspectOS backend at {API_URL}. Start it (dev.ps1) and try again."}
++    if response.status_code >= 400:
++        try:
++            detail = response.json().get("detail", response.text)
++        except ValueError:
++            detail = response.text
++        return {"error": detail, "status_code": response.status_code}
++    if response.status_code == 204 or not response.content:
++        return {"ok": True}
++    return response.json()
++
++
++# --- Read -----------------------------------------------------------------
++
++@server.tool(annotations=READ)
++def list_prospects(
++    search: str | None = None,
++    city: str | None = None,
++    category: str | None = None,
++    sort_by: str = "created_at",
++    limit: int = 25,
++    offset: int = 0,
++) -> Any:
++    """List saved prospects, newest first. Filter by free-text search, city or category."""
++    return _call("GET", "/api/businesses", params={
++        "search": search, "city": city, "category": category,
++        "sort_by": sort_by, "limit": max(1, min(limit, 200)), "offset": offset,
++    })
++
++
++@server.tool(annotations=READ)
++def get_prospect(business_id: str) -> Any:
++    """Full record for one prospect: contact details, latest audit, scores, drafts, notes, status history."""
++    return _call("GET", f"/api/businesses/{business_id}")
++
++
++@server.tool(annotations=READ)
++def approval_queue() -> Any:
++    """Current outreach drafts waiting for approval (one per prospect)."""
++    return _call("GET", "/api/gmail/approval-queue")
++
++
++@server.tool(annotations=READ)
++def outreach_report() -> Any:
++    """Sending and reply stats for outreach so far."""
++    return _call("GET", "/api/gmail/report")
++
++
++@server.tool(annotations=READ)
++def gmail_status() -> Any:
++    """Whether a Gmail account is connected for sending."""
++    return _call("GET", "/api/gmail/status")
++
++
++# --- Work on prospects ----------------------------------------------------
++
++@server.tool(annotations=EXTERNAL)
++def discover_businesses(
++    category: str,
++    city: str,
++    country: str | None = None,
++    radius_km: float = 5.0,
++    limit: int = 25,
++    save: bool = False,
++) -> Any:
++    """Search OpenStreetMap/Geoapify for businesses of a category in a city (e.g. "hvac", "dentist").
++    Set save=True to add the results to ProspectOS as prospects (duplicates are skipped)."""
++    return _call("POST", "/api/businesses/search", json={
++        "category": category, "city": city, "country": country,
++        "radius_km": radius_km, "limit": max(1, min(limit, 100)), "save": save,
++    })
++
++
++@server.tool(annotations=EXTERNAL)
++def audit_prospect(business_id: str) -> Any:
++    """Crawl the prospect's website and score it: contact options, booking, chat, mobile,
++    discovered email and opportunity types. Takes up to a minute per site."""
++    return _call("POST", f"/api/businesses/{business_id}/audit")
++
++
++@server.tool(annotations=WRITE)
++def draft_outreach(business_id: str, angle: str | None = None, sender_id: str | None = None) -> Any:
++    """Generate a new outreach email draft from the prospect's latest audit. Optional angle
++    (e.g. BOOKING, AI_CHATBOT, WEBSITE_REDESIGN); otherwise the strongest opportunity is used.
++    Drafts are never sent by this tool."""
++    return _call("POST", f"/api/businesses/{business_id}/outreach", json={"angle": angle, "sender_id": sender_id})
++
++
++@server.tool(annotations=WRITE)
++def add_note(business_id: str, content: str, author: str | None = "Claude") -> Any:
++    """Attach a note to a prospect (call outcomes, what they said, next steps)."""
++    return _call("POST", f"/api/businesses/{business_id}/notes", json={"content": content, "author": author})
++
++
++@server.tool(annotations=WRITE)
++def set_lead_status(business_id: str, status: str, note: str | None = None) -> Any:
++    """Move a prospect to a pipeline stage: NEW, AUDITED, QUALIFIED, OUTREACH_READY, CONTACTED,
++    FOLLOW_UP, REPLIED, INTERESTED, CONCEPT_SENT, DISCUSSION, DEMO_SENT, CALL_BOOKED, PROPOSAL,
++    WON, LOST, NOT_INTERESTED."""
++    status = status.strip().upper()
++    if status not in LEAD_STATUSES:
++        return {"error": f"Unknown status {status!r}. Use one of: {', '.join(LEAD_STATUSES)}"}
++    return _call("POST", f"/api/businesses/{business_id}/status",
++                 json={"status": status, "note": note, "changed_by": "Claude"})
++
++
++# --- Email ----------------------------------------------------------------
++
++@server.tool(annotations=WRITE)
++def approve_outreach(outreach_id: str) -> Any:
++    """Mark a draft as approved by the user. Required before it can be sent."""
++    return _call("POST", f"/api/gmail/outreach/{outreach_id}/approve")
++
++
++@server.tool(annotations=SENDS_EMAIL)
++def send_outreach(outreach_id: str, confirm: bool = False) -> Any:
++    """Send one approved draft from the connected Gmail. Only call with confirm=True after the
++    user has seen the draft and explicitly said to send it in this conversation."""
++    if not confirm:
++        return {"error": "Not sent. Show the user the draft and call again with confirm=True once they say send."}
++    return _call("POST", f"/api/gmail/outreach/{outreach_id}/send")
++
++
++@server.tool(annotations=EXTERNAL)
++def sync_replies() -> Any:
++    """Pull new replies to sent outreach from Gmail and update reply state on each prospect."""
++    return _call("POST", "/api/gmail/sync-replies")
++
++
++def main() -> None:
++    server.run("stdio")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/backend/requirements-mcp.txt b/backend/requirements-mcp.txt
+new file mode 100644
+index 0000000..13cdd49
+--- /dev/null
++++ b/backend/requirements-mcp.txt
+@@ -0,0 +1 @@
++mcp>=2,<3
+diff --git a/backend/tests/test_mcp_server.py b/backend/tests/test_mcp_server.py
+new file mode 100644
+index 0000000..f116977
+--- /dev/null
++++ b/backend/tests/test_mcp_server.py
+@@ -0,0 +1,54 @@
++import asyncio
++import json
++
++import httpx
++import pytest
++
++mcp_mod = pytest.importorskip("mcp_server.prospectos_mcp")
++
++
++def _mock(handler):
++    mcp_mod.set_client(httpx.Client(base_url="http://test", transport=httpx.MockTransport(handler)))
++
++
++def test_tools_are_registered():
++    names = {t.name for t in asyncio.run(mcp_mod.server.list_tools())}
++    assert {
++        "list_prospects", "get_prospect", "discover_businesses", "audit_prospect", "draft_outreach",
++        "approval_queue", "approve_outreach", "send_outreach", "sync_replies", "set_lead_status", "add_note",
++    } <= names
++
++
++def test_list_prospects_passes_filters_and_drops_empty_ones():
++    seen = {}
++
++    def handler(request: httpx.Request):
++        seen["url"] = str(request.url)
++        return httpx.Response(200, json={"items": [], "total": 0})
++
++    _mock(handler)
++    assert mcp_mod.list_prospects(city="Lakeland", limit=500) == {"items": [], "total": 0}
++    assert "city=Lakeland" in seen["url"] and "limit=200" in seen["url"] and "search=" not in seen["url"]
++
++
++def test_send_requires_confirmation():
++    calls = []
++    _mock(lambda r: calls.append(r) or httpx.Response(200, json={"id": "x"}))
++    assert "error" in mcp_mod.send_outreach("abc")
++    assert calls == []
++    assert mcp_mod.send_outreach("abc", confirm=True) == {"id": "x"}
++    assert calls[0].url.path == "/api/gmail/outreach/abc/send"
++
++
++def test_bad_status_is_rejected_before_calling_api():
++    calls = []
++    _mock(lambda r: calls.append(r) or httpx.Response(201, json={}))
++    assert "error" in mcp_mod.set_lead_status("b1", "maybe")
++    assert calls == []
++    mcp_mod.set_lead_status("b1", "interested", note="Asked for a call")
++    assert json.loads(calls[0].content)["status"] == "INTERESTED"
++
++
++def test_api_errors_come_back_readable():
++    _mock(lambda r: httpx.Response(404, json={"detail": "Business not found"}))
++    assert mcp_mod.get_prospect("nope") == {"error": "Business not found", "status_code": 404}
+diff --git a/docs/MCP.md b/docs/MCP.md
+new file mode 100644
+index 0000000..5727cc9
+--- /dev/null
++++ b/docs/MCP.md
+@@ -0,0 +1,56 @@
++# Using ProspectOS from Claude (MCP)
++
++`backend/mcp_server/prospectos_mcp.py` exposes ProspectOS to Claude as 13 tools:
++list/get prospects, discover businesses, audit a site, draft outreach, approval queue,
++approve, send (needs `confirm=True`), sync replies, set lead status, add notes, report.
++
++It calls the running FastAPI backend over HTTP, so the backend must be running (`dev.ps1`).
++
++## 1. Separate virtual environment (required)
++
++The MCP SDK (v2) needs a newer Starlette than the backend's pinned FastAPI, so keep it in its
++own venv. From `backend\` in PowerShell:
++
++```powershell
++python -m venv .venv-mcp
++.\.venv-mcp\Scripts\pip install -r requirements-mcp.txt httpx
++```
++
++## 2. Connect Claude Desktop
++
++Open the config file at `%APPDATA%\Claude\claude_desktop_config.json` (create it if missing) and add:
++
++```json
++{
++  "mcpServers": {
++    "prospectos": {
++      "command": "C:\\Codes\\ProspectAi\\backend\\.venv-mcp\\Scripts\\python.exe",
++      "args": ["C:\\Codes\\ProspectAi\\backend\\mcp_server\\prospectos_mcp.py"],
++      "env": { "PROSPECTOS_API_URL": "http://localhost:8000" }
++    }
++  }
++}
++```
++
++Fully quit Claude Desktop (tray icon -> Quit) and reopen it. ProspectOS appears in the tools menu.
++
++## 3. Claude Code (optional)
++
++```powershell
++claude mcp add prospectos -- C:\Codes\ProspectAi\backend\.venv-mcp\Scripts\python.exe C:\Codes\ProspectAi\backend\mcp_server\prospectos_mcp.py
++```
++
++## Try it
++
++- "Find 20 HVAC companies in Lakeland, FL and save them."
++- "Audit the ones with websites and show me the 5 with the biggest gaps."
++- "Draft outreach for those 5." (review, then) "Approve and send the first two."
++- "Sync replies and tell me who answered."
++
++## Tests
++
++```powershell
++.\.venv-mcp\Scripts\pip install pytest
++.\.venv-mcp\Scripts\python -m pytest tests\test_mcp_server.py
++```
++The main test suite skips this file when the MCP SDK isn't installed.

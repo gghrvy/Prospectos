@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.models.business import Business
+from app.models.enums import QualityCategory
 from app.services.analyzer.analyzer import AnalysisFindings, analyze_crawl, quality_category_for_score
 from app.services.crawler.crawler import crawl_website
 from app.services.crawler.fetcher import PageFetcher
@@ -66,6 +67,9 @@ def run_audit(business: Business, fetcher: PageFetcher | None = None) -> dict:
     )
 
     findings = analyze_crawl(crawl_result)
+    if findings.blocked_by_bot_protection:
+        return blocked_audit_data(business.website, findings.http_status, desktop_screenshot, mobile_screenshot)
+
     quality_category = quality_category_for_score(findings.website_quality_score)
     scoring_result = score_website(findings, quality_category)
     website_context = build_website_context(crawl_result, findings)
@@ -114,6 +118,33 @@ def run_audit(business: Business, fetcher: PageFetcher | None = None) -> dict:
         "opportunity_assessments": assessments,
         "website_context": website_context,
         "audit_summary": summary,
+        "screenshot_desktop_path": desktop_screenshot,
+        "screenshot_mobile_path": mobile_screenshot,
+    }
+
+
+def blocked_audit_data(url: str, http_status: int | None, desktop_screenshot=None, mobile_screenshot=None) -> dict:
+    """The site refused the crawler (403/429, bot challenge, robots.txt).
+    Its real quality is unknown, so no opportunity is claimed: outreach
+    must not pitch fixes for problems nobody actually saw."""
+    reason = (
+        f"The site refused automated checks (HTTP {http_status})." if http_status
+        else "The site refused automated checks (bot protection or robots.txt)."
+    )
+    return {
+        "url": url,
+        "http_status": http_status,
+        "https_enabled": urlparse(url).scheme == "https",
+        "quality_category": QualityCategory.BLOCKED.value,
+        "website_quality_score": None,
+        "ai_opportunity_score": 0,
+        "redesign_opportunity_score": 0,
+        "overall_opportunity_score": 0,
+        "opportunity_types": [],
+        "opportunity_reasons": [reason + " Open it in a browser and review it by hand before any outreach."],
+        "opportunity_assessments": [],
+        "website_context": {"blocked_by_bot_protection": True},
+        "audit_summary": "Blocked: the site refused the crawler, so its quality could not be measured.",
         "screenshot_desktop_path": desktop_screenshot,
         "screenshot_mobile_path": mobile_screenshot,
     }

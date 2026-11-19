@@ -177,3 +177,43 @@ def test_detects_parked_host_page_but_not_normal_homepage():
     assert analyze_crawl(_crawl("http://c2h.com", ("http://c2h.com", parked))).is_parked_or_placeholder is True
     normal = "<html><body><a href='/'>Homepage</a><p>New location coming soon to Tampa!</p>" + "x" * 20000 + "</body></html>"
     assert analyze_crawl(_crawl("https://ok.com", ("https://ok.com", normal))).is_parked_or_placeholder is False
+
+
+def test_page_builder_bookings_markup_is_not_online_booking():
+    html = ('<html><body><a id="n-1-membership-bookings-logged-out" href="/m/bookings">Sign in</a>'
+            '<p>Call to book now!</p><a href="tel:5551234567">Book now</a></body></html>')
+    assert analyze_crawl(_crawl("https://finleyair.com", ("https://finleyair.com", html))).has_booking is False
+
+
+def test_booking_button_counts():
+    html = '<html><body><a href="/schedule">Schedule Service</a></body></html>'
+    assert analyze_crawl(_crawl("https://x.com", ("https://x.com", html))).has_booking is True
+
+
+def test_book_now_linking_to_contact_form_is_not_online_booking():
+    html = ('<html><body><a href="/contact#form">Book Now</a>'
+            '<a href="/hvac-resource-guide#x">Schedule Now</a></body></html>')
+    assert analyze_crawl(_crawl("https://finleyair.com", ("https://finleyair.com", html))).has_booking is False
+
+
+def test_book_now_widget_button_counts_as_booking():
+    html = '<html><body><button class="open-widget">Book Online</button></body></html>'
+    assert analyze_crawl(_crawl("https://x.com", ("https://x.com", html))).has_booking is True
+
+
+def test_403_homepage_is_marked_blocked_not_scored():
+    result = CrawlResult(start_url="https://brandonmodern.com")
+    result.pages = [PageResult(url="https://brandonmodern.com", status_code=403, html="<html>Forbidden</html>", depth=0)]
+    findings = analyze_crawl(result)
+    assert findings.blocked_by_bot_protection is True
+    assert findings.http_status == 403
+
+
+def test_cloudflare_challenge_page_is_marked_blocked():
+    html = "<html><head><title>Just a moment...</title></head><body><div id='cf-chl-widget'></div></body></html>"
+    assert analyze_crawl(_crawl("https://x.com", ("https://x.com", html))).blocked_by_bot_protection is True
+
+
+def test_normal_page_with_recaptcha_is_not_blocked():
+    html = "<html><body><h1>Smile 360</h1><div class='g-recaptcha'></div>" + "<p>We care.</p>" * 50 + "</body></html>"
+    assert analyze_crawl(_crawl("https://x.com", ("https://x.com", html))).blocked_by_bot_protection is False

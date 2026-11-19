@@ -43,6 +43,7 @@ from app.services.discovery.demo_limits import (
     PER_VISITOR_LIMIT,
     demo_search_limiter,
 )
+from app.services.discovery.apify import ApifyBudgetError, ApifyGoogleMapsProvider, read_monthly_usage
 from app.services.discovery.geoapify import GEOAPIFY_KNOWN_CATEGORIES
 from app.services.discovery.openstreetmap import KNOWN_CATEGORIES
 from app.services.contracts import render_nda, render_service_agreement, render_welcome_packet
@@ -241,6 +242,26 @@ def geocode_place(payload: GeocodeRequest, request: Request):
             raise HTTPException(400, str(geoapify_error)) from geoapify_error
 
 
+@router.get("/search/apify-usage")
+def apify_usage():
+    """This month's Apify spend against the budget guard."""
+    if get_settings().is_demo_mode:
+        raise HTTPException(403, demo_data.DEMO_READ_ONLY)
+    settings = get_settings()
+    if not settings.apify_token:
+        raise HTTPException(400, "APIFY_TOKEN is not set in backend/.env.")
+    try:
+        usage = read_monthly_usage(settings.apify_token)
+    except ApifyBudgetError as error:
+        raise HTTPException(400, str(error)) from error
+    return {
+        **usage,
+        "budget_usd": settings.apify_monthly_budget_usd,
+        "remaining_usd": round(settings.apify_monthly_budget_usd - usage["used_usd"], 4),
+        "max_results_per_search": settings.apify_max_results,
+    }
+
+
 @router.post("/search")
 def search_businesses(payload: OSMSearchRequest, request: Request, db: Session = Depends(get_db)):
     if get_settings().is_demo_mode:
@@ -254,6 +275,24 @@ def search_businesses(payload: OSMSearchRequest, request: Request, db: Session =
         latitude=payload.latitude,
         longitude=payload.longitude,
     )
+    if payload.source == "google_maps":
+        settings = get_settings()
+        if not settings.apify_token:
+            raise HTTPException(400, "Google Maps search needs APIFY_TOKEN in backend/.env.")
+        try:
+            candidates = ApifyGoogleMapsProvider(
+                token=settings.apify_token,
+                monthly_budget_usd=settings.apify_monthly_budget_usd,
+                max_results=settings.apify_max_results,
+            ).discover(**search_kwargs)
+        except ApifyBudgetError as budget_error:
+            raise HTTPException(402, str(budget_error)) from budget_error
+        except ValueError as apify_error:
+            raise HTTPException(400, str(apify_error)) from apify_error
+        existing = db.scalars(select(Business)).all()
+        unique = deduplicate_businesses(list(existing), candidates)
+        return _persist_candidates(db, unique) if payload.save else unique
+
     try:
         candidates = OpenStreetMapProvider().discover(**search_kwargs)
     except ValueError as osm_error:

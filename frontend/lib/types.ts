@@ -11,6 +11,7 @@ export const QUALITY_CATEGORIES = [
   "WEAK",
   "POOR",
   "CRITICAL",
+  "BLOCKED",
 ] as const;
 export type QualityCategory = (typeof QUALITY_CATEGORIES)[number];
 
